@@ -3,6 +3,7 @@
 本文供 AI 在一位新用户的电脑上安装、配置和验收 Agent Forge 使用。
 目标是个人自部署，不是把开发者现有数据库、登录态和权限复制给其他人。
 按顺序执行，遇到授权步骤交由用户完成；不得把“进程已启动”当作全部配置成功。
+面向人工操作的完整双仓步骤见 [本机安装](INSTALL.md#full-suite)；本文补充 AI 的权限边界与验收标准。
 
 ## 1. 明确范围
 
@@ -81,7 +82,7 @@ git clone https://github.com/One-h/agent-forge.git
 git clone https://github.com/One-h/lark-agent.git
 ```
 
-先将占位符替换为维护者提供的实际仓库地址。Git SSH 认证失败时先解决认证，不改成未知镜像。
+上面是公开仓库的实际 HTTPS 地址。使用自己选择的其他远端时，先确认其来源和访问权限，不改成未知镜像。
 若目录已存在，先检查 `git status --short`、当前分支和 remote，禁止覆盖或重置。
 默认使用远端 main；如用户指定版本，记录实际 commit。
 本机开发服务可能使用未合并分支，新机器 main 不一定包含相同功能：
@@ -284,8 +285,10 @@ curl -fsS http://127.0.0.1:4780/v1/health
 
 ## 6. 启动 Forge 并完成向导
 
-在 Forge 根目录加载 `data/runtime.env`（仅飞书集成需要），运行 `npm run dev`。
-常驻时同样创建本地启动脚本，负责 Node 24 PATH、source 和 `exec npm run dev`：
+在 Forge 根目录运行 `npm run dev`。仅飞书集成需要启动器读取同级
+`lark-agent/data/runtime.env`；非标准目录通过 `AGENT_FORGE_RUNTIME_ENV` 指定，
+不要求把含密钥的文件复制到 Forge。常驻时创建本地启动脚本，负责 Node 24 PATH、
+可选的 `AGENT_FORGE_RUNTIME_ENV` 和 `exec npm run dev`：
 
 ```bash
 tmux new-session -d -s agent-forge-dev -c "$FORGE_ROOT" 'exec ./data/start-dev.sh'
@@ -320,12 +323,13 @@ Lark Agent 的可信人、审批人等持久设置会覆盖初始部署默认值
 ## 7. 按需补齐工作区能力
 
 - 用户工作区应有真实的 `AGENTS.md`、技能目录与知识入口，禁止复制他人的个人知识和凭据。
-- PR 评审依赖用户工作区的 `tea-pr-review` 等技能与仓库权限。
+- PR 评审需要用户自己的仓库权限；优先复用工作区的评审技能，未安装时可使用已配置的 Git/Gitea 工具回退，不依赖维护者的私有技能脚本。
 - 发布能力使用设置页中配置的本机部署适配脚本及部署者自己的认证，默认不启用。适配协议见 `docs/DEPLOYMENT-ADAPTER.md`。
   缺少这些时只能报告能力未配置，不能伪造文件或复用原部署者的线上权限。
 - 联系人在设置页更新；`--has-chatted` 不是全量公司通讯录，不保证覆盖所有同事。
 - 新安装贴纸库可以为空。通过表情包库上传或导入授权素材，验证文件与元数据一起存在；
-  模型需要声明 `<lark-sticker>` 才触发检索，不保证每次回复都发图。
+  模型通过本地 `lark_stickers` MCP 按需搜索并选择素材，文字成功送达后再发送。
+  旧 `<lark-sticker>` 标签仅保留兼容，不是触发检索的必需方式；不保证每次回复都发图。
 - 自定义人设通过“飞书消息 → 会话 → 人设”设置。配置后替换默认风格，下一轮生效，
   不改变权限，不需要删除原 Codex 会话。若 main 尚无此入口，先报告版本差异。
 - 随机插话默认关闭；启用时逐个添加授权群白名单，空名单不插话。

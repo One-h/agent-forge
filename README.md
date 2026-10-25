@@ -11,20 +11,47 @@ It syncs selected Gitea issues and pull requests into SQLite, shows them in a we
 - Run multiple Codex jobs concurrently.
 - Allow same-repo concurrency through isolated branch/worktree lanes.
 - Let Codex create PRs directly and report the PR URL through structured output.
-- Manage a local Lark sticker library with batch upload, editable usage guidance, and one ID-based sticker on every final Agent reply.
+- Manage a local Lark sticker library with batch upload and configurable, MCP-based sticker selection when connected to Lark Agent.
 - Accept structured todos from Lark with priority, tags, automatic due dates, reminders, and completion callbacks to the source conversation.
 
-## Quick Start
+## Two Projects, One Optional Integration
 
-AI-assisted first-time installation: [AI 从零部署与配置指南](docs/AI-BOOTSTRAP.md).
-It covers optional Git setup, the standalone Lark Agent, local credentials, startup order, and acceptance checks.
+| Project | Responsibility | Runs independently? |
+| --- | --- | --- |
+| **Agent Forge** (this repository) | Web console, settings, Codex Todo, Git/Gitea workflows, and the management UI for Lark Agent | Yes; Git and Lark integrations are optional |
+| **[Lark Agent](https://github.com/One-h/lark-agent)** | Feishu/Lark listeners, Codex conversations, approvals, contacts, images/files, stickers, and reliable delivery | Yes; Forge adds a web management UI and host capabilities |
+
+```text
+Feishu / Lark <--> Lark Agent :4780 <--> Codex App Server
+                        |
+                   Agent Forge
+                   API :4731 / Web :4732 / Companion :4734
+                        |
+                 Git/Gitea, Todo, optional deployment adapter
+```
+
+The repositories have separate dependencies, processes, and SQLite databases.
+**Installing Forge does not install or start Lark Agent.** Forge connects over a
+loopback HTTP API using shared runtime/host tokens; neither repository is an npm
+dependency of the other. Both use your own workspace, skills, and credentials.
+
+## Quick Start: Console Only
+
+Requires macOS, Git, Node.js 24/npm, and a logged-in Codex CLI for Codex tasks.
+Use this route for Todo and optional Git/Gitea workflows without a Feishu bot.
 
 ```bash
+git clone https://github.com/One-h/agent-forge.git
+cd agent-forge
+# With nvm installed; run nvm install first if Node 24 is missing.
 nvm use
-npm install
+npm ci
 npm run migrate
 npm run dev
 ```
+
+Open Settings and choose your workspace. Skip Git setup when it is not needed.
+This command starts the Forge services below, not the Lark Agent listener.
 
 API: `http://localhost:4731`
 
@@ -32,9 +59,33 @@ Web: `http://localhost:4732`
 
 Codex companion: `http://localhost:4734/todos`
 
+## Install the Full Suite
+
+Start with the **[complete installation walkthrough](docs/INSTALL.md#full-suite)**.
+It includes both clones, Node 24 dependencies, protected local configuration,
+shared tokens, startup commands, activation, and acceptance checks. For an AI
+performing the installation, also follow [AI 从零部署与配置指南](docs/AI-BOOTSTRAP.md).
+
+1. Install `agent-forge` and `lark-agent` as sibling directories.
+2. Install/login to Codex and `lark-cli`; configure your own Feishu application,
+   bot availability, message events, and card-action callbacks.
+3. Create the local Lark Agent configuration and two random shared tokens.
+   Keep them outside Git; the walkthrough does not overwrite existing files.
+4. Start Lark Agent on `4780`, then Forge on `4731/4732/4734`. Forge automatically
+   reads the sibling `lark-agent/data/runtime.env`; for another location set
+   `AGENT_FORGE_RUNTIME_ENV` to its absolute path.
+5. Complete Settings, activate the bot, and verify a real private reply, group
+   mention, and approval callback. A healthy process alone is not full acceptance.
+
+No company workspace, contacts, sticker collection, production credentials, or
+deployment workflow is bundled. Import your own authorized media; configure a
+[local deployment adapter](docs/DEPLOYMENT-ADAPTER.md) only if you need deployment.
+
+## Configuration and Daily Use
+
 `npm run dev` also builds and watches the original `/todos` React page for the dedicated Codex window and attaches to an existing loopback CDP renderer. Run `npm run forge:open` (or `npm run codex:open`) to check/start the service and open the dedicated window directly on Agent Forge Todo. See [apps/codex-companion/README.md](apps/codex-companion/README.md) for its security model and configuration.
 
-User-facing configuration is stored in the local SQLite database. The database and task-output paths are resolved from the repository root. Lark sticker metadata is stored in SQLite and image files are kept under `data/lark-stickers/`.
+Forge configuration and jobs are stored in its local SQLite database, with paths resolved from the repository root. With Lark Agent connected, its conversation/sticker metadata and media are owned by the Agent; the full-suite layout stores them in `lark-agent/data/lark-agent.sqlite` and `lark-agent/data/stickers/`. Do not share database files between the two services or assume a Forge-only backup includes the Agent's data.
 
 Agents can extend the same library from a public image URL or a generated local file with `npm run stickers:add -- --url <image-url> --name <name> --description <usage> --tags <tag1,tag2>` (use `--file <absolute-path>` for local images). The command validates the image and records its source before adding it through the loopback API.
 
