@@ -1,0 +1,9 @@
+Agent Forge source code is licensed under MIT; see LICENSE.
+
+Feishu/Lark reaction artwork in apps/web/public/lark-reactions originates from
+the platform's public developer assets. Artwork and platform trademarks belong
+to their respective owners and are not relicensed by this project's MIT notice.
+Reference: https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce
+
+User-provided sticker libraries, chat attachments, databases and credentials
+are local runtime data and are not distributed with this repository.

@@ -1,0 +1,23 @@
+{
+  "name": "@agent-forge/codex-companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test src/*.test.mjs",
+    "dev": "npm run build && concurrently -k -n embed,web,injector -c cyan,yellow,magenta \"vite build --watch\" \"node src/server.mjs\" \"AUTOFIX_CODEX_SKIP_LAUNCH=1 node src/injector.mjs\""
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.15.1",
+    "vite": "^6.3.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.5",
+    "@types/react-dom": "^19.1.5"
+  }
+}

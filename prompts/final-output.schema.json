@@ -1,0 +1,84 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["triaged", "pr_created", "blocked", "failed", "needs_review"]
+    },
+    "target_repo": { "type": ["string", "null"] },
+    "task_dir": { "type": "string" },
+    "worktree_path": { "type": ["string", "null"] },
+    "branch_name": { "type": ["string", "null"] },
+    "pr_url": { "type": ["string", "null"] },
+    "summary": { "type": "string" },
+    "verification": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "residual_risk": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "triage": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["easy-direct", "mid-human-review", "hard-human-handoff"]
+        },
+        "scores": {
+          "type": "object",
+          "properties": {
+            "difficulty": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "workload": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "importance": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "complexity": { "type": "integer", "minimum": 1, "maximum": 5 }
+          },
+          "required": ["difficulty", "workload", "importance", "complexity"],
+          "additionalProperties": false
+        },
+        "summary": { "type": "string" }
+      },
+      "required": ["decision", "scores", "summary"],
+      "additionalProperties": false
+    },
+    "development_plan": {
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string" },
+        "steps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "target_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "verification": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["summary", "steps", "target_files", "verification", "risks"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "status",
+    "target_repo",
+    "task_dir",
+    "worktree_path",
+    "branch_name",
+    "pr_url",
+    "summary",
+    "verification",
+    "residual_risk",
+    "triage",
+    "development_plan"
+  ],
+  "additionalProperties": false
+}

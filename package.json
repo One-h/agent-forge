@@ -1,0 +1,42 @@
+{
+  "name": "agent-forge",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/One-h/agent-forge.git" },
+  "bugs": { "url": "https://github.com/One-h/agent-forge/issues" },
+  "homepage": "https://github.com/One-h/agent-forge#readme",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=10"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/with-lark-agent-env.mjs -- concurrently -k -n api,web,codex -c blue,green,magenta \"npm run dev:api\" \"npm run dev:web\" \"npm run dev:codex\"",
+    "dev:api": "npm --workspace apps/api run dev",
+    "dev:web": "npm --workspace apps/web run dev",
+    "dev:codex": "npm --workspace apps/codex-companion run dev",
+    "codex:open": "node scripts/autofix-codex.mjs",
+    "forge:open": "node scripts/autofix-codex.mjs",
+    "codex:launch": "npm run codex:open",
+    "build": "npm --workspaces run build",
+    "typecheck": "npm --workspaces run typecheck",
+    "test": "node --test scripts/with-lark-agent-env.test.mjs && npm --workspace apps/api run test && npm --workspace apps/codex-companion run test && npm --workspace apps/web run test",
+    "migrate": "npm --workspace apps/api run migrate",
+    "start": "node scripts/with-lark-agent-env.mjs -- npm --workspace apps/api run start",
+    "start:local": "node scripts/with-lark-agent-env.mjs -- node scripts/start-local.mjs",
+    "stickers:import:capoo": "node scripts/import-capoo-vault.mjs",
+    "stickers:import:fabiaoqing": "node scripts/import-fabiaoqing-stickers.mjs",
+    "stickers:add": "node scripts/add-sticker.mjs",
+    "stickers:organize:mimo": "node scripts/organize-sticker-tags-mimo.mjs"
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "apps/codex-companion"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
+  }
+}

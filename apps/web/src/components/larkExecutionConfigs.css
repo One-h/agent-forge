@@ -1,0 +1,40 @@
+.larkExecutionConfigs,
+.larkExecutionRound,
+.larkExecutionRecord {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.larkExecutionRound {
+  border-top: 1px solid var(--color-border-subtle);
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+}
+
+.larkExecutionRound h4 {
+  font-size: var(--text-md);
+  margin: 0;
+}
+
+.larkExecutionConfigs .larkExecutionMeta {
+  font-size: var(--text-sm);
+  gap: var(--space-2) var(--space-4);
+  grid-template-columns: 76px minmax(0, 1fr);
+  margin-top: var(--space-3);
+}
+
+.larkExecutionRecord {
+  margin-top: var(--space-5);
+}
+
+.larkExecutionRecordHeader {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-2) var(--space-4);
+}
+
+.larkExecutionRecordHeader > * {
+  min-width: 0;
+}

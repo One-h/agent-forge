@@ -1,0 +1,14 @@
+node_modules/
+dist/
+**/dist/
+data/
+**/data/*.sqlite
+**/data/*.sqlite-shm
+**/data/*.sqlite-wal
+.env
+.env.*
+!.env.example
+runtime.env
+/lark-agent.toml
+.DS_Store
+*.log

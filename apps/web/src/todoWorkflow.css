@@ -1,0 +1,78 @@
+.todoWorkflowGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.todoWorkflowGrid label {
+  margin: 0;
+}
+
+.todoWorkflowWide {
+  grid-column: 1 / -1;
+}
+
+.todoNotifyToggle {
+  align-items: center;
+  display: flex;
+  flex-direction: row !important;
+  gap: 8px;
+}
+
+.todoNotifyToggle input {
+  width: auto;
+}
+
+.todoPriorityBadge,
+.todoTag,
+.todoDueDate {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 8px;
+}
+
+.priority-urgent {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+  color: var(--danger);
+}
+
+.priority-high {
+  background: color-mix(in srgb, #f59e0b 13%, transparent);
+  color: #b45309;
+}
+
+.priority-normal,
+.priority-low {
+  color: var(--muted);
+}
+
+.todoCardWorkflowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.todoTag {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  color: var(--accent);
+}
+
+.todoDueDate.overdue {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+  color: var(--danger);
+}
+
+@media (max-width: 720px) {
+  .todoWorkflowGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .todoWorkflowWide {
+    grid-column: auto;
+  }
+}

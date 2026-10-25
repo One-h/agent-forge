@@ -1,0 +1,25 @@
+{
+  "name": "@agent-forge/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4732 --strictPort",
+    "build": "tsc -p tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test src/components/*.test.mjs",
+    "preview": "vite preview --host 127.0.0.1 --port 4732 --strictPort"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "lucide-react": "^1.16.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.15.1",
+    "vite": "^6.3.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.5",
+    "@types/react-dom": "^19.1.5"
+  }
+}
