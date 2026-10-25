@@ -40,7 +40,7 @@ Agents can extend the same library from a public image URL or a generated local 
 
 Open `http://localhost:4732/settings` to complete the first-run setup. The workspace path, Gitea address, username, trusted Lark IDs, and selected repositories are stored in local SQLite. Gitea token remains in macOS Keychain and is never stored in SQLite.
 
-The first-run wizard checks the workspace, Gitea credential, selected repositories, and local diagnostics before enabling the workspace. Settings can also export and restore portable backups of configuration, repositories, todos, and audit history. Backups exclude tokens, Lark login state, task artifacts, and synced Issue/PR content.
+The first-run wizard checks the workspace and local diagnostics. Git/Gitea setup is optional; credentials and selected repositories are required only when enabling repository sync. Settings can also export and restore portable backups of configuration, repositories, todos, and audit history. Backups exclude tokens, Lark login state, task artifacts, and synced Issue/PR content.
 
 For an upgrade from an older installation, the first startup imports non-sensitive values from an existing `.env` into SQLite once. The running service no longer reads `.env`; review the Settings page before manually removing that legacy file.
 
@@ -71,7 +71,7 @@ The allowlist is persisted locally and synchronized to Lark Agent on save/restor
 - The web UI passes structured job parameters only; it never accepts arbitrary shell commands.
 - Agent Forge repair and PR-review jobs can run Codex with full local workspace permissions. Turn on only the repositories and integrations you trust; it never merges, deploys, or mutates online systems by itself.
 - Lark messages remain read-only by default. When high-permission execution is explicitly enabled, the configured execution-approval recipient is trusted by default; additional trusted sender IDs are optional. Trusted senders have the full local permissions of the deploying user, including file changes, Git/Gitea actions, and any deployment capability already available through that user's local skills and credentials.
-- Lark Codex replies use a local `codex app-server`. Messages in the same conversation are processed as serialized turns on the existing Codex thread, so every mentioned message receives its own final answer instead of replacing an earlier in-flight task.
+- Lark Codex replies use a local `codex app-server`. Conversations reuse their thread within the same trust scope. New messages can steer an active turn; its final answer may consolidate several inputs rather than sending one independent answer per message.
 - Gitea tokens saved through Settings are stored in macOS Keychain. The API only accepts the local web UI as a cross-origin caller. Lark uses the locally authenticated `lark-cli` profile.
-- The system never deploys or writes production data automatically. A trusted sender can explicitly request an action that the deploying user's local skills and credentials permit; production actions still depend on the target skill and available local access.
-- PR creation is delegated to Codex through the workspace `tea-pr-submit-cn` skill.
+- Production actions require an explicit user request and the configured trust/approval policy, which may include automatic turn approval. Deployment also requires a local adapter and the operator's credentials; command execution is not reported as verification without explicit verification evidence.
+- PR creation is delegated to Codex using a workspace submission skill when available, or the configured Git/Gitea tools otherwise.
