@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { notifyTodoOwner } from "../todoNotifications.js";
+import { requireLarkHostAuthorization } from "../larkHostAuthorization.js";
 import {
   createTodoWithWorkflow,
   todoPriorities,
@@ -27,7 +28,7 @@ const todoCapabilitySchema = z.object({
 });
 
 export async function todoWorkflowRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/api/lark-agent/capabilities/forge.todo.create", async (request, reply) => {
+  app.post("/api/lark-agent/capabilities/forge.todo.create", { preHandler: requireLarkHostAuthorization }, async (request, reply) => {
     const parsed = todoCapabilitySchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid todo input" });
     const context: LarkTodoContext | undefined = parsed.data.context ? {

@@ -24,6 +24,7 @@ import { defaultLarkAcknowledgeReactionEmoji, isLarkReactionEmojiType } from "..
 import { apiErrorCodes } from "../errorCodes.js";
 import { LarkAgentResponseError, larkAgentFetch, larkAgentProxyFetch, larkAgentRequest } from "../larkAgentIntegration.js";
 import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, readLarkAppSettings, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
+import { requireLarkHostAuthorization } from "../larkHostAuthorization.js";
 
 const repairBodySchema = z.object({
   mode: z.enum(["review_only", "issue_triage", "issue_implementation", "reviewed_pr"]).default("issue_triage"),
@@ -538,8 +539,7 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
       }
     });
   }
-  app.post("/api/lark-agent/capabilities/:id", async (request, reply) => {
-    if (!config.larkAgentHostToken || request.headers.authorization !== `Bearer ${config.larkAgentHostToken}`) return reply.code(401).send({ error: "host capability authorization required" });
+  app.post("/api/lark-agent/capabilities/:id", { preHandler: requireLarkHostAuthorization }, async (request, reply) => {
     const { id } = z.object({ id: z.enum(["forge.gitea.review-pr", "forge.gitea.triage-issue", "forge.todo.create", "forge.deploy.inspect", "forge.deploy.production"]) }).parse(request.params);
     const { input } = larkAgentCapabilitySchema.parse(request.body ?? {});
     if (id === "forge.todo.create") {

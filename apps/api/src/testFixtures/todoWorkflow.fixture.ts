@@ -51,14 +51,16 @@ assert.ok(completed?.completed_at);
 assert.equal(completed?.next_reminder_at, null);
 
 const app = Fastify();
+config.larkAgentHostToken = "fixture-host-token";
+const headers = { authorization: "Bearer fixture-host-token" };
 await app.register(todoWorkflowRoutes);
 await app.register(todoRoutes);
 const payload = {
   input: { title: "跟进产品建议", priority: "urgent", tags: ["产品"] },
   context: { larkMessageId: 43, chatId: "oc_product", chatType: "group", senderId: "ou_requester" }
 };
-const capabilityFirst = await app.inject({ method: "POST", url: "/api/lark-agent/capabilities/forge.todo.create", payload });
-const capabilitySecond = await app.inject({ method: "POST", url: "/api/lark-agent/capabilities/forge.todo.create", payload });
+const capabilityFirst = await app.inject({ method: "POST", url: "/api/lark-agent/capabilities/forge.todo.create", headers, payload });
+const capabilitySecond = await app.inject({ method: "POST", url: "/api/lark-agent/capabilities/forge.todo.create", headers, payload });
 assert.equal(capabilityFirst.statusCode, 201);
 assert.equal(capabilitySecond.statusCode, 200);
 assert.equal(capabilityFirst.json().id, capabilitySecond.json().id);

@@ -83,6 +83,7 @@ import { issueRoutes } from "./routes/issues.js";
 import { jobRoutes } from "./routes/jobs.js";
 import { stickerRoutes } from "./routes/stickers.js";
 import { todoRoutes } from "./routes/todos.js";
+import { todoWorkflowRoutes } from "./routes/todoWorkflow.js";
 import { detectStickerImage, ensureLarkStickerSelection, larkStickerPrompt, listLarkStickers, stageLarkStickerSelection } from "./larkStickers.js";
 import { taskPackageSummary } from "./taskPackages.js";
 import { nowIso } from "./time.js";
@@ -280,10 +281,21 @@ test("Forge host capability endpoint delegates todo creation", async () => {
   config.larkAgentHostToken = "test-host-token";
   const app = Fastify({ logger: false });
   await app.register(todoRoutes);
+  await app.register(todoWorkflowRoutes);
   await app.register(issueRoutes);
   try {
-    const denied = await app.inject({ method: "POST", url: "/api/lark-agent/capabilities/forge.todo.create", payload: { input: { title: "denied" } } });
-    assert.equal(denied.statusCode, 401);
+    const count = () => (db.prepare("SELECT count(*) AS n FROM codex_todos").get() as { n: number }).n;
+    const before = count();
+    for (const token of ["", "test-host-token"]) {
+      config.larkAgentHostToken = token;
+      for (const headers of [{}, { authorization: "Bearer wrong-token" }, ...(token ? [] : [{ authorization: "Bearer test-host-token" }])]) {
+        for (const capability of ["forge.todo.create", "forge.gitea.review-pr"]) {
+          const denied = await app.inject({ method: "POST", url: `/api/lark-agent/capabilities/${capability}`, headers, payload: { input: { title: "denied" } } });
+          assert.equal(denied.statusCode, 401);
+          assert.equal(count(), before);
+        }
+      }
+    }
     const response = await app.inject({ method: "POST", url: "/api/lark-agent/capabilities/forge.todo.create", headers: { authorization: "Bearer test-host-token" }, payload: { input: { title: "来自 Lark Agent 的待办" } } });
     assert.equal(response.statusCode, 201);
     assert.equal((response.json() as { title: string }).title, "来自 Lark Agent 的待办");
@@ -2290,22 +2302,27 @@ test("Lark Codex responder uses trusted-sender quick-answer guardrails", () => {
 
 test("Lark Codex prompt derives workspace paths from the local runtime configuration", () => {
   const previousWorkspaceRoot = config.workspaceRoot;
+  const previousRepoRoot = config.repoRoot;
   config.workspaceRoot = "/tmp/autofix-workspace";
   try {
-    const prompt = buildLarkCodexPrompt({
-      content: "检查 PR",
-      chat_type: "p2p",
-      sender_id: "ou_sender",
-      reply_to_message_id: null,
-      reply_to_message_type: null,
-      reply_to_content: null
-    });
-    assert.match(prompt, /\/tmp\/autofix-workspace\/AGENTS\.md/);
-    assert.match(prompt, /\/tmp\/autofix-workspace\/docs\/repositories/);
-    assert.match(prompt, new RegExp(config.repoRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\/g, "\\\\")));
-    assert.doesNotMatch(prompt, /\/Users\/[^/\s]+\/Documents\/super\/AGENTS\.md/);
+    for (const repoRoot of [previousRepoRoot, "/tmp/tools.v2/agent-forge", "/tmp/tools [draft]+(copy)/agent-forge"]) {
+      config.repoRoot = repoRoot;
+      const prompt = buildLarkCodexPrompt({
+        content: "检查 PR",
+        chat_type: "p2p",
+        sender_id: "ou_sender",
+        reply_to_message_id: null,
+        reply_to_message_type: null,
+        reply_to_content: null
+      });
+      assert.match(prompt, /\/tmp\/autofix-workspace\/AGENTS\.md/);
+      assert.match(prompt, /\/tmp\/autofix-workspace\/docs\/repositories/);
+      assert.ok(prompt.includes(repoRoot), "prompt must include the literal repository path");
+      assert.doesNotMatch(prompt, /\/Users\/[^/\s]+\/Documents\/super\/AGENTS\.md/);
+    }
   } finally {
     config.workspaceRoot = previousWorkspaceRoot;
+    config.repoRoot = previousRepoRoot;
   }
 });
 
