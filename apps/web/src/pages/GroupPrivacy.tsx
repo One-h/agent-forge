@@ -3,7 +3,7 @@ import { ShieldCheck,RefreshCw } from "lucide-react";
 import "./personalInbox.css";
 type Message={id:number;chatId:string;content:string;identity:string;category:string;status:string;draft:string;reason:string;error:string|null;version:number;operationJson:string|null;operationOutput:string|null};
 type Snapshot={policy:{companyRoots:string[];autoPublishGenerated:boolean;autoExecute:boolean;personalAccess:boolean};messages:Message[]};
-const labels:Record<string,string>={pending:"等待隔离分析",reviewing:"隔离分析中",researching:"公司资料研究中",needs_owner:"等待你确认",executing:"单次操作执行中",operation_unknown:"请先核对操作结果",sending:"发送中",sent:"已确认发群",send_unknown:"请核对群消息",forwarded:"已批准转交来源 Agent",dismissed:"已忽略"};
+const labels:Record<string,string>={pending:"等待隔离分析",reviewing:"隔离分析中",researching:"公司资料研究中",needs_owner:"等待你确认",executing:"单次操作执行中",operation_unknown:"请先核对操作结果",sending:"发送中",sent:"已确认发群",send_unknown:"请核对群消息",forwarded:"已批准转交来源 Agent",dismissed:"已手动关闭",ignored:"模型判断无需处理，已静默忽略"};
 async function request<T>(route="",method="GET",body?:unknown):Promise<T>{const r=await fetch(`/api/group-privacy${route}`,{method,headers:{"content-type":"application/json"},...(body===undefined?{}:{body:JSON.stringify(body)})});const d=await r.json();if(!r.ok)throw new Error(d.error??"请求失败");return d;}
 function Review({row,roots,busy,act}:{row:Message;roots:string[];busy:boolean;act:(id:number,body:Record<string,unknown>)=>void}){
  const [draft,setDraft]=useState(row.draft),[root,setRoot]=useState(0),[argv,setArgv]=useState('[]'),[query,setQuery]=useState('');
@@ -25,12 +25,13 @@ export function GroupPrivacyPage(){
  const load=async()=>{const d=await request<Snapshot>();setData(d);return d;};
  useEffect(()=>{void load().then(d=>setRoots(d.policy.companyRoots.join("\n"))).catch(e=>setError(String(e)));const timer=setInterval(()=>{if(!document.hidden)void load().catch(e=>setError(String(e)));},5000);return()=>clearInterval(timer);},[]);
  const perform=async(action:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);setError("");try{await action();await load();}catch(e){setError(String(e));}finally{setBusy(false);}};
- return <section className="pageStack"><div className="heroBand"><div><p className="eyebrow">公司与个人资料隔离</p><h2><ShieldCheck size={23}/>群聊隐私审批</h2><p className="subtle">群消息使用独立无个人工具的分析环境。模型草稿、承诺、群内协作转交和执行操作均需你单次确认。</p></div><button disabled={busy} onClick={()=>void perform(load)}><RefreshCw size={16}/>刷新</button></div>
+ const visible=(data?.messages??[]).filter(row=>all||!["sent","dismissed","forwarded","ignored"].includes(row.status));
+ return <section className="pageStack"><div className="heroBand"><div><p className="eyebrow">公司与个人资料隔离</p><h2><ShieldCheck size={23}/>群聊隐私审批</h2><p className="subtle">明确无待办的闲聊会静默忽略，可在已处理记录回看；需要处理或拿不准的消息进入私下审批。群消息使用独立无个人工具的分析环境。模型草稿、承诺、群内协作转交和执行操作均需你单次确认。</p></div><button disabled={busy} onClick={()=>void perform(load)}><RefreshCw size={16}/>刷新</button></div>
   {error&&<p role="alert" className="inboxWarning">{error}</p>}
   <div className="personalInboxStatus"><span>个人文件与其他会话：禁止读取</span><span>自动发布模型回复：关闭</span><span>自动执行操作：关闭</span></div>
   <details><summary>允许研究的公司目录</summary><label className="inboxDraftLabel">每行一个明确的公司目录<textarea rows={3} value={roots} onChange={event=>setRoots(event.target.value)}/></label><p className="subtle">目录必须真实存在，不能是个人目录或符号链接。查询排除凭据、会话、数据库和二进制资料；公司研究结果也不会自动发群。</p><button disabled={busy} onClick={()=>void perform(()=>request("","PATCH",{companyRoots:roots.split("\n").map(x=>x.trim()).filter(Boolean)}))}>保存公司范围</button></details>
   <label><input type="checkbox" checked={all} onChange={event=>setAll(event.target.checked)}/>显示已处理请求</label>
-  {(data?.messages??[]).filter(row=>all||!["sent","dismissed","forwarded"].includes(row.status)).map(row=><Review key={row.id} row={row} roots={data?.policy.companyRoots??[]} busy={busy} act={(id,body)=>void perform(()=>request(`/${id}/decision`,"POST",body))}/>)}
-  {!data?.messages.length&&<div className="emptyState">暂无群聊隐私审批。未取得你确认前，不会自动发布模型生成的群回复。</div>}
+  {visible.map(row=><Review key={row.id} row={row} roots={data?.policy.companyRoots??[]} busy={busy} act={(id,body)=>void perform(()=>request(`/${id}/decision`,"POST",body))}/>)}
+  {!visible.length&&<div className="emptyState">暂无待处理消息。闲聊会静默忽略，可勾选“显示已处理请求”回看；需要发布的模型回复仍须你确认。</div>}
  </section>;
 }
