@@ -1,3 +1,4 @@
+import { groupPrivacyRoutes } from "./routes/groupPrivacy.js";
 import { agentMessagingRoutes } from "./routes/agentMessaging.js";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
@@ -27,6 +28,7 @@ await app.register(stickerRoutes);
 await app.register(todoRoutes);
 await app.register(personalInboxRoutes);
 await app.register(agentMessagingRoutes);
+await app.register(groupPrivacyRoutes);
 
 app.get("/api/health", async () => ({
   ok: true,
