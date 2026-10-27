@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Download, FileText, FolderGit2, HardDrive, History, KeyRound, Power, RefreshCw, Save, Settings2, ShieldCheck, Stethoscope, Trash2, Upload } from "lucide-react";
 import { api, type LarkCodexModel, type LaunchAgentStatus, type LocalAuditEvent, type LocalBackup, type LocalDataUsage, type LocalDiagnostic, type LocalRepository, type PromptKey, type PromptSettings, type RuntimeConfig, type Settings } from "../api";
+import { CompanyScopeSettings } from "../components/CompanyScopeSettings";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { statusText } from "../i18n";
 import { usePersistentState } from "../usePersistentState";
@@ -477,6 +478,7 @@ export function SettingsPage() {
           <div className="onboardingSteps" aria-label="首次配置进度"><span className={wizardStep === 0 ? "active" : "done"}>基础配置</span><span className={wizardStep === 1 ? "active" : wizardStep > 1 ? "done" : ""}>凭据</span><span className={wizardStep === 2 ? "active" : wizardStep > 2 ? "done" : ""}>仓库</span><span className={wizardStep === 3 ? "active" : ""}>检查</span></div>
           {wizardStep === 0 && <div className="onboardingBody">
             <div className="settingsField firstSettingField"><label htmlFor="onboardingWorkspaceRoot">工作区路径</label><input disabled={saving} id="onboardingWorkspaceRoot" onChange={(event) => setRuntimeDraft((current) => ({ ...current, workspaceRoot: event.target.value }))} placeholder="/Users/name/Documents/workspace" value={runtimeDraft.workspaceRoot} /></div>
+            <CompanyScopeSettings suggestedRoot={runtimeDraft.workspaceRoot} />
             <div className="settingsField"><label htmlFor="onboardingGiteaUrls">Gitea 地址（可选）</label><textarea disabled={saving} id="onboardingGiteaUrls" onChange={(event) => setRuntimeDraft((current) => ({ ...current, giteaBaseUrls: event.target.value.split(/\r?\n/) }))} placeholder={"https://gitea.example.com\nhttps://git.example.com"} rows={3} value={runtimeDraft.giteaBaseUrls.join("\n")} /><small>每行一个地址；首个地址用于 API 同步，其余地址用于识别本机仓库 remote。</small></div>
             <div className="settingsField"><label htmlFor="onboardingGiteaUser">Gitea 用户名（可选）</label><input disabled={saving} id="onboardingGiteaUser" onChange={(event) => setRuntimeDraft((current) => ({ ...current, giteaUser: event.target.value }))} placeholder="用于筛选待评审 PR" value={runtimeDraft.giteaUser} /></div>
             <div className="inlineActions"><button disabled={saving} onClick={() => void saveRuntimeConfig().then((saved) => saved && setWizardStep(1))} type="button">保存并继续</button></div>
@@ -531,6 +533,8 @@ export function SettingsPage() {
           </div>
           <div className="inlineActions"><button disabled={saving} onClick={() => void saveRuntimeConfig()} type="button">保存基础配置</button></div>
         </div>}
+
+        {settingsSection === "common" && settings.setupComplete && <section className="panel"><CompanyScopeSettings suggestedRoot={runtimeDraft.workspaceRoot} /></section>}
 
         {settingsSection === "common" && <div className="panel">
           <h3><KeyRound size={16} /> Gitea 凭据</h3>
