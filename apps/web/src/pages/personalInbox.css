@@ -1,0 +1,8 @@
+.personalInboxStatus{display:flex;flex-wrap:wrap;gap:12px 24px;padding:16px;border:1px solid var(--border,#ddd);border-radius:12px;font-size:13px}
+.personalInboxStatus label{display:flex;align-items:center;gap:8px}.personalInboxStatus input{width:auto}
+.personalInboxMessage{padding:22px;border:1px solid var(--border,#ddd);border-radius:14px;background:var(--surface,#fff);display:grid;gap:10px}
+.personalInboxMessage p{margin:0}.personalInboxMessageHeader{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.personalInboxContent{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}.inboxState{margin-left:auto;font-size:12px;border-radius:20px;padding:4px 10px;background:var(--bg-muted,#eee)}
+.inboxState.needs_owner,.inboxState.awaiting_auth{color:#9a5a05;background:#fff1d7}.inboxState.sent{color:#176a43;background:#dcf6e9}
+.inboxQuestion{font-weight:600}.inboxWarning{padding:12px;border-radius:8px;background:#fff1df;color:#8c4806;overflow-wrap:anywhere}
+.inboxDraftLabel{display:grid;gap:8px;font-size:13px}.inboxDraftLabel textarea{width:100%;resize:vertical;min-height:90px}.personalInboxMessage .actionGroup{flex-wrap:wrap}
