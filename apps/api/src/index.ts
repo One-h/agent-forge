@@ -1,3 +1,4 @@
+import { agentMessagingRoutes } from "./routes/agentMessaging.js";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { config } from "./config.js";
@@ -10,6 +11,7 @@ import { todoRoutes } from "./routes/todos.js";
 import { startBackgroundWorkers, stopBackgroundWorkers } from "./worker.js";
 import { registerForgeLarkAgentCapabilities } from "./larkAgentIntegration.js";
 import { todoWorkflowRoutes } from "./routes/todoWorkflow.js";
+import { personalInboxRoutes } from "./routes/personalInbox.js";
 
 migrate();
 hydrateRuntimeConfig();
@@ -23,6 +25,8 @@ await app.register(issueRoutes);
 await app.register(jobRoutes);
 await app.register(stickerRoutes);
 await app.register(todoRoutes);
+await app.register(personalInboxRoutes);
+await app.register(agentMessagingRoutes);
 
 app.get("/api/health", async () => ({
   ok: true,

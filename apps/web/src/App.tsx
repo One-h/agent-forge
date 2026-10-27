@@ -1,3 +1,4 @@
+import { AgentMessagingPage } from "./pages/AgentMessaging";
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { Activity, Bell, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings2, ShieldCheck, Sun, WandSparkles } from "lucide-react";
@@ -6,6 +7,7 @@ import { IssueDetailDrawer } from "./components/IssueDetailDrawer";
 import { Dashboard } from "./pages/Dashboard";
 import { IssueList } from "./pages/IssueList";
 import { LarkMessageList } from "./pages/LarkMessageList";
+import { PersonalInboxPage } from "./pages/PersonalInbox";
 import { NotificationList } from "./pages/NotificationList";
 import { PullRequestList } from "./pages/PullRequestList";
 import { RunList } from "./pages/RunList";
@@ -84,6 +86,8 @@ export function App() {
     { to: "/notifications", label: "通知", icon: Bell },
     { to: "/todos", label: "待办", icon: ListTodo },
     { to: "/lark-messages", label: "飞书消息", icon: MessageSquareText },
+    { to: "/agent-messaging", label: "Agent 消息路由", icon: Inbox },
+    { to: "/personal-inbox", label: "个人收件箱", icon: Inbox },
     { to: "/approvals", label: "审批记录", icon: ShieldCheck },
     { to: "/stickers", label: "表情包库", icon: Images },
     { to: "/runs", label: "运行记录", icon: Activity },
@@ -185,6 +189,8 @@ export function App() {
           />
           <Route path="/todos" element={<TodoList />} />
           <Route path="/lark-messages" element={<LarkMessageList />} />
+          <Route path="/agent-messaging" element={<AgentMessagingPage />} />
+          <Route path="/personal-inbox" element={<PersonalInboxPage />} />
           <Route path="/lark-messages/:messageId" element={<LarkMessageList />} />
           <Route path="/approvals" element={<ApprovalHistory />} />
           <Route path="/approvals/:kind/:approvalId" element={<ApprovalHistory />} />
