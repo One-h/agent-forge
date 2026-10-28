@@ -17,6 +17,10 @@ test("Forge proxies inbox and routing with runtime auth, and rejects foreign-ori
   assert.equal(seen[0].url,"http://127.0.0.1:4780/v1/agent-messaging");assert.equal((seen[0].init?.headers as Record<string,string>).authorization,"Bearer fixture-runtime-token");
   assert.equal((await app.inject({method:"GET",url:"/api/group-privacy"})).statusCode,200);
   assert.equal(seen.at(-1)?.url,"http://127.0.0.1:4780/v1/group-privacy");
+  assert.equal((await app.inject({method:"PATCH",url:"/api/group-privacy",payload:{enabled:false}})).statusCode,200);
+  assert.equal(seen.at(-1)?.init?.method,"PATCH");
+  assert.deepEqual(JSON.parse(String(seen.at(-1)?.init?.body)),{enabled:false});
+  assert.equal((seen.at(-1)?.init?.headers as Record<string,string>).authorization,"Bearer fixture-runtime-token");
   const count=seen.length;
   assert.equal((await app.inject({method:"POST",url:"/api/agent-messaging/1/decision",headers:{origin:"https://untrusted.example"},payload:{}})).statusCode,403);
   assert.equal((await app.inject({method:"PATCH",url:"/api/personal-inbox",headers:{origin:"https://untrusted.example"},payload:{enabled:true}})).statusCode,403);

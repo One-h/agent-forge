@@ -91,7 +91,7 @@ Agents can extend the same library from a public image URL or a generated local 
 
 Open `http://localhost:4732/settings` to complete the first-run setup. The workspace path, Gitea address, username, trusted Lark IDs, and selected repositories are stored in local SQLite. Gitea token remains in macOS Keychain and is never stored in SQLite.
 
-Company-data access for the Feishu assistant is configured separately during first-run setup or in Settings. It defaults to no directories; the workspace is only an optional candidate and requires explicit owner confirmation before authorization. See [choosing company directories](docs/INSTALL.md#61-选择助手可研究的公司资料目录).
+Group privacy protection is optional and disabled by default. Enable it in Settings or the group privacy page to review group replies and operations privately. Its company-directory allowlist is separate from the ordinary assistant's workspace and defaults to empty; choosing directories does not enable privacy protection. See [choosing company directories](docs/INSTALL.md#61-选择助手可研究的公司资料目录).
 
 The first-run wizard checks the workspace and local diagnostics. Git/Gitea setup is optional; credentials and selected repositories are required only when enabling repository sync. Settings can also export and restore portable backups of configuration, repositories, todos, and audit history. Backups exclude tokens, Lark login state, task artifacts, and synced Issue/PR content.
 
