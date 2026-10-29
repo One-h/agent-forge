@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Inbox, RefreshCw, Send, Pause, Play, Check } from "lucide-react";
+import { OwnerMentionAssists } from "../components/OwnerMentionAssists";
 import "./personalInbox.css";
 
 type Message = { id: number; chatType: string; chatName: string; senderName: string; content: string; sourceTime: string;
@@ -65,5 +66,6 @@ export function PersonalInboxPage() {
     <div className="actionGroup"><button className={filter === "attention" ? "" : "ghostButton"} onClick={() => setFilter("attention")}>待处理</button><button className={filter === "all" ? "" : "ghostButton"} onClick={() => setFilter("all")}>全部记录</button></div>
     {!messages.length && <div className="emptyState">{status?.enabled ? "还没有待处理的新消息。首次开启只采集之后的新消息，不自动处理历史记录。" : "开启后，将个人私聊和群里 @你的消息收进这里。"}</div>}
     {messages.map(message => <InboxMessage key={message.id} message={message} busy={busy} onAction={(message, action, text) => void perform(() => request(`/${message.id}/decision`, "POST", { action, text, version: message.version }))} />)}
+    <OwnerMentionAssists />
   </section>;
 }

@@ -100,6 +100,19 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
     } catch (err) { setError(String(err)); }
     finally { setBusy(false); }
   };
+  const updateOwnerMentionAssist = async (mode: "global" | "on" | "off") => {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api.updateLarkOwnerMentionAssist(chatId, mode);
+      const confirmed = await api.larkConversationSettings(chatId);
+      if (result.ownerMentionAssist?.mode !== mode || confirmed.ownerMentionAssist?.mode !== mode) {
+        throw new Error("群聊协同配置未确认，请刷新后重试。");
+      }
+      setConversationSettings(confirmed);
+      setNotice("群聊协同设置已保存。");
+    } catch (err) { setError(String(err)); }
+    finally { setBusy(false); }
+  };
   const rate = Number(spontaneousPercent) / 100;
   const cooldownMs = Math.round(Number(spontaneousCooldownMinutes) * 60_000);
   const spontaneousInvalid = spontaneousMode === "on" && (!spontaneousPercent.trim() || !Number.isFinite(rate) || rate < 0 || rate > 1
@@ -160,6 +173,13 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
           </div>
           <small>全局当前为：{stickerModeLabels[conversationSettings.stickerUsage.globalMode]}</small>
         </section>
+        {chatType === "group" && <section className="conversationSettingSection">
+          <div><strong>群聊协同</strong><p>{conversationSettings.ownerMentionAssist ? `当前${conversationSettings.ownerMentionAssist.effectiveEnabled ? "开启" : "关闭"} · 全局${conversationSettings.ownerMentionAssist.globalEnabled ? "开启" : "关闭"}` : "状态未知，当前 API / Agent 不可配置。"}</p></div>
+          <div className="segmentedControl spontaneousMode" aria-label="群聊协同模式" role="radiogroup">
+            {([["global", "跟随全局"], ["on", "开启"], ["off", "关闭"]] as const).map(([value, label]) => <button type="button" key={value} role="radio" aria-checked={conversationSettings.ownerMentionAssist?.mode === value} className={conversationSettings.ownerMentionAssist?.mode === value ? "active" : ""} disabled={busy || !conversationSettings.ownerMentionAssist} onClick={() => void updateOwnerMentionAssist(value)}>{label}</button>)}
+          </div>
+          {conversationSettings.ownerMentionAssist && <small style={{ overflowWrap: "anywhere" }}>被 @对象：{conversationSettings.ownerMentionAssist.ownerId || "未配置审批接收人"}</small>}
+        </section>}
         {chatType === "group" && <section className="conversationSettingSection">
           <div><strong>随机加入群聊</strong><p>{conversationSettings.spontaneousReply.effectiveEnabled
             ? `当前概率 ${Number((conversationSettings.spontaneousReply.effectiveReplyRate * 100).toFixed(2))}%，冷却 ${Number((conversationSettings.spontaneousReply.effectiveCooldownMs / 60_000).toFixed(2))} 分钟。`

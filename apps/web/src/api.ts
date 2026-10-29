@@ -172,6 +172,8 @@ export type Settings = {
     larkCodexReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
     larkStickerUsageMode: "off" | "explicit" | "natural" | "always";
     larkGroupSpontaneousRepliesEnabled: boolean;
+    larkOwnerMentionAssistEnabled: boolean;
+    larkOwnerMentionAssistOwnerId: string;
     larkGroupSpontaneousReplyRate: number;
     larkGroupSpontaneousReplyCooldownMs: number;
     larkGroupSpontaneousChatIds: string[];
@@ -187,6 +189,7 @@ export type Settings = {
     larkGroupContextMaxChars: number;
     pollIntervalMs: number;
   };
+  larkSettingsKnown?: Partial<Record<keyof Settings["appSettings"], boolean>>;
   prompts: PromptSettings;
 };
 
@@ -307,7 +310,7 @@ export type LarkMessage = {
   reply_to_content: string | null;
   reply_to_raw_json?: string | null;
   mentioned: number;
-  reply_trigger: "none" | "p2p" | "mention" | "spontaneous";
+  reply_trigger: "none" | "p2p" | "mention" | "spontaneous" | "owner_mention";
   reply_status: string;
   reply_error: string | null;
   codex_status: "skipped" | "queued" | "running" | "answered" | "no_reply" | "failed" | "timeout";
@@ -442,7 +445,16 @@ export type ConversationSpontaneousReply = {
   globalReplyRate: number;
   globalCooldownMs: number;
 };
-export type ConversationSettings = { stickerUsage: ConversationStickerUsage; spontaneousReply: ConversationSpontaneousReply };
+export type ConversationOwnerMentionAssist = { mode: "global" | "on" | "off"; globalEnabled: boolean; effectiveEnabled: boolean; ownerId: string };
+export type ConversationSettings = { stickerUsage: ConversationStickerUsage; spontaneousReply: ConversationSpontaneousReply; ownerMentionAssist?: ConversationOwnerMentionAssist };
+export type OwnerMentionAssist = {
+  lark_message_id: number; id: number; owner_id: string; decision: string;
+  status: "pending" | "handling" | "reconsidering" | "ready" | "needs_owner" | "ignored" | "sent" | "dismissed";
+  reason: string; draft: string; question: string; version: number; content: string;
+  chat_id: string; chat_type: string; sender_id: string; message_id: string; thread_id: string | null;
+  ownerResponses: Array<{ id: number; message_id: string; content: string; message_at: string; reply_to_message_id: string | null }>;
+  enabled: boolean;
+};
 
 export type LarkConversationPagination = {
   total: number;
@@ -639,7 +651,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers
   });
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw Object.assign(new Error(await response.text()), { statusCode: response.status });
   }
   if (response.status === 204) {
     return undefined as T;
@@ -648,6 +660,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  ownerMentionAssists: () => request<{ items: OwnerMentionAssist[] }>("/api/owner-mention-assists"),
+  decideOwnerMentionAssist: (id: number, input: { action: "send" | "dismiss"; text?: string; version: number }) => request<{ item: OwnerMentionAssist }>(`/api/owner-mention-assists/${id}/decision`, {
+    method: "POST", body: JSON.stringify({ action: input.action, ...(input.text !== undefined ? { text: input.text } : {}), version: input.version })
+  }),
   approvalHistory: (options: { kind: "auto" | "manual"; source?: string; status?: string; q?: string; offset: number }) => {
     const params = new URLSearchParams({ kind: options.kind, limit: "50", offset: String(options.offset) });
     for (const key of ["source", "status", "q"] as const) if (options[key]) params.set(key, options[key]);
@@ -734,6 +750,7 @@ export const api = {
   saveLarkPersona: (chatId: string, input: PersonaInput) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona`, { method: "PUT", body: JSON.stringify({ mode: input.mode, name: input.name, instructions: input.instructions }) }),
   previewLarkPersona: (chatId: string, input: PersonaInput) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona/preview`, { method: "POST", body: JSON.stringify({ mode: input.mode, name: input.name, instructions: input.instructions }) }),
   larkConversationSettings: (chatId: string) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`),
+  updateLarkOwnerMentionAssist: (chatId: string, ownerMentionAssistMode: ConversationOwnerMentionAssist["mode"]) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`, { method: "PATCH", body: JSON.stringify({ ownerMentionAssistMode }) }),
   updateLarkConversationSettings: (chatId: string, stickerUsageMode: ConversationStickerUsage["mode"]) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`, { method: "PATCH", body: JSON.stringify({ stickerUsageMode }) }),
   updateLarkSpontaneousReply: (chatId: string, input: { spontaneousMode: ConversationSpontaneousReply["mode"]; spontaneousReplyRate?: number; spontaneousReplyCooldownMs?: number }) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`, { method: "PATCH", body: JSON.stringify(input) }),
   larkMessageArtifacts: (id: number) => request<LarkMessageArtifacts>(`/api/lark/messages/${id}/artifacts`),

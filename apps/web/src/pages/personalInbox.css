@@ -6,3 +6,9 @@
 .inboxState.needs_owner,.inboxState.awaiting_auth{color:#9a5a05;background:#fff1d7}.inboxState.sent{color:#176a43;background:#dcf6e9}
 .inboxQuestion{font-weight:600}.inboxWarning{padding:12px;border-radius:8px;background:#fff1df;color:#8c4806;overflow-wrap:anywhere}
 .inboxDraftLabel{display:grid;gap:8px;font-size:13px}.inboxDraftLabel textarea{width:100%;resize:vertical;min-height:90px}.personalInboxMessage .actionGroup{flex-wrap:wrap}
+.ownerMentionAssists{display:grid;gap:14px;min-width:0;padding-top:24px;border-top:1px solid var(--border,#ddd)}
+.ownerMentionAssistsHeader{display:flex;align-items:center;justify-content:space-between;gap:12px}.ownerMentionAssistsHeader h3{font-size:18px;margin:0}
+.ownerMentionAssistsFilter{display:flex;gap:8px;align-items:center;font-size:13px}.ownerMentionAssistsFilter input{width:auto}
+.ownerMentionAssistMessage{border-radius:8px;min-width:0}.ownerMentionAssistMessage>*{min-width:0}
+.ownerMentionAssistMessage textarea{box-sizing:border-box;max-width:100%}.ownerMentionResponses{display:grid;gap:10px;border-left:2px solid var(--border,#ddd);padding-left:12px}
+@media(max-width:600px){.ownerMentionAssistMessage{padding:14px}.ownerMentionAssistMessage .actionGroup>button{max-width:100%;white-space:normal}.ownerMentionAssistMessage .inboxState{margin-left:0}}

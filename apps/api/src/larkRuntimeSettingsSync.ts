@@ -8,6 +8,10 @@ const model = z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/)
 const chatIds = z.array(z.string().regex(/^oc_[A-Za-z0-9]+$/)).max(200);
 const emoji = z.string().refine(isLarkReactionEmojiType);
 export const approvalDataSourcesSchema = z.array(z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/).transform(value => value.toLowerCase())).max(100).transform(values => [...new Set(values)]);
+export const ownerMentionAssistOwnerIdSchema = z.string().trim().max(200).regex(/^(?:ou_[A-Za-z0-9]+)?$/);
+export const ownerMentionAssistSettingsSchema = z.object({
+  mode: z.enum(["global", "on", "off"]), globalEnabled: z.boolean(), effectiveEnabled: z.boolean(), ownerId: ownerMentionAssistOwnerIdSchema
+});
 
 export const larkRuntimeSettingsSchema = z.object({
   listenerEnabled: z.boolean(),
@@ -19,6 +23,8 @@ export const larkRuntimeSettingsSchema = z.object({
   reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]),
   stickerUsageMode: z.enum(["off", "explicit", "natural", "always"]),
   groupSpontaneousRepliesEnabled: z.boolean(),
+  ownerMentionAssistEnabled: z.boolean(),
+  ownerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema,
   groupSpontaneousReplyRate: z.number().min(0).max(1),
   groupSpontaneousReplyCooldownMs: z.number().int().min(0).max(604_800_000),
   groupSpontaneousChatIds: chatIds,
@@ -59,6 +65,8 @@ export const larkAppSettingFields = {
   larkCodexReasoningEffort: "reasoningEffort",
   larkStickerUsageMode: "stickerUsageMode",
   larkGroupSpontaneousRepliesEnabled: "groupSpontaneousRepliesEnabled",
+  larkOwnerMentionAssistEnabled: "ownerMentionAssistEnabled",
+  larkOwnerMentionAssistOwnerId: "ownerMentionAssistOwnerId",
   larkGroupSpontaneousReplyRate: "groupSpontaneousReplyRate",
   larkGroupSpontaneousReplyCooldownMs: "groupSpontaneousReplyCooldownMs",
   larkGroupSpontaneousChatIds: "groupSpontaneousChatIds",
@@ -135,6 +143,10 @@ export async function syncLarkRuntimeSettings(
   const legacyApproval = options.allowLegacyBackup && patch.turnAutoApprovalModel === "gpt-6.1-sol";
   const hasApproval = patch.turnAutoApprovalEnabled !== undefined || patch.turnAutoApprovalModel !== undefined;
   if (!config.larkAgentUrl) {
+    if ((patch.ownerMentionAssistEnabled !== undefined || patch.ownerMentionAssistOwnerId !== undefined)
+        && !(options.allowLegacyBackup && patch.ownerMentionAssistEnabled === false && patch.ownerMentionAssistOwnerId === "")) {
+      throw failure("Lark Agent is not configured for owner mention assist", 409);
+    }
     if (hasApproval && !(legacyApproval && patch.turnAutoApprovalEnabled === false)) {
       throw failure("Lark Agent is not configured for turn auto-approval", 409);
     }
@@ -145,6 +157,7 @@ export async function syncLarkRuntimeSettings(
   try { current = settingsRecord(await larkAgentProxyFetch("/v1/settings")); }
   catch { throw failure("Lark Agent runtime settings are unavailable"); }
   const previous: RuntimeSettingsPatch = {};
+  const defaultOwnerAssist = patch.ownerMentionAssistEnabled === false && patch.ownerMentionAssistOwnerId === "";
   for (const key of Object.keys(patch) as RuntimeSettingKey[]) {
     if (key === "turnAutoApprovalModel" && current.turnAutoApprovalModelConfigurable !== true) {
       if (legacyApproval) { delete patch[key]; continue; }
@@ -153,6 +166,7 @@ export async function syncLarkRuntimeSettings(
     if (!readableLarkRuntimeSetting(current, key)) {
       // Legacy restores send only supported optional fields; permission fields remain mandatory.
       if (options.allowLegacyBackup && !Object.hasOwn(current, key) && !["trustedExecutionEnabled", "workspaceRoot", "approverId", "trustedSenderIds"].includes(key)
+          && (!key.startsWith("ownerMentionAssist") || defaultOwnerAssist)
           && (key !== "turnAutoApprovalEnabled" || (legacyApproval && patch[key] === false))) {
         delete patch[key];
         continue;

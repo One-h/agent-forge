@@ -23,7 +23,7 @@ import { rescheduleGiteaSyncTimer } from "../worker.js";
 import { defaultLarkAcknowledgeReactionEmoji, isLarkReactionEmojiType } from "../larkReactionEmojis.js";
 import { apiErrorCodes } from "../errorCodes.js";
 import { LarkAgentResponseError, larkAgentFetch, larkAgentProxyFetch, larkAgentRequest } from "../larkAgentIntegration.js";
-import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, readLarkAppSettings, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
+import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, ownerMentionAssistOwnerIdSchema, ownerMentionAssistSettingsSchema, readLarkAppSettings, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
 import { requireLarkHostAuthorization } from "../larkHostAuthorization.js";
 
 const repairBodySchema = z.object({
@@ -54,6 +54,8 @@ const settingsPatchSchema = z.object({
   larkCodexReasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]).optional(),
   larkStickerUsageMode: z.enum(["off", "explicit", "natural", "always"]).optional(),
   larkGroupSpontaneousRepliesEnabled: z.boolean().optional(),
+  larkOwnerMentionAssistEnabled: z.boolean().optional(),
+  larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema.optional(),
   larkGroupSpontaneousReplyRate: z.number().min(0).max(1).optional(),
   larkGroupSpontaneousReplyCooldownMs: z.number().int().min(0).max(604_800_000).optional(),
   larkGroupSpontaneousChatIds: z.array(z.string().trim().regex(/^oc_[A-Za-z0-9]+$/, "群 ID 必须是 oc_ 开头的有效 ID")).max(200).transform((ids) => [...new Set(ids)]).optional(),
@@ -139,6 +141,8 @@ const localBackupSchema = z.object({
     larkCodexReasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]).default("low"),
     larkStickerUsageMode: z.enum(["off", "explicit", "natural", "always"]).default("natural"),
     larkGroupSpontaneousRepliesEnabled: z.boolean().default(false),
+    larkOwnerMentionAssistEnabled: z.boolean().default(false),
+    larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema.default(""),
     larkGroupSpontaneousReplyRate: z.number().min(0).max(1).default(0.08),
     larkGroupSpontaneousReplyCooldownMs: z.number().int().min(0).max(604_800_000).default(600_000),
     larkGroupSpontaneousChatIds: z.array(z.string().trim().regex(/^oc_[A-Za-z0-9]+$/)).max(200).default([]),
@@ -524,6 +528,7 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
           const parsed = z.object({
             stickerUsageMode: z.enum(["global", "off", "explicit", "natural", "always"]).optional(),
             spontaneousMode: z.enum(["global", "on", "off"]).optional(),
+            ownerMentionAssistMode: z.enum(["global", "on", "off"]).optional(),
             spontaneousReplyRate: z.number().min(0).max(1).optional(),
             spontaneousReplyCooldownMs: z.number().int().min(0).max(604_800_000).optional()
           }).strict().refine((value) => Object.values(value).some((item) => item !== undefined)).safeParse(request.body);
@@ -531,10 +536,28 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
           body = parsed.data;
         }
         try {
-          return await larkAgentProxyFetch(`/v1/chats/${encodeURIComponent(params.data.chatId)}/settings`, {
+          const target = `/v1/chats/${encodeURIComponent(params.data.chatId)}/settings`;
+          const ownerMode = method === "PATCH" ? (body as { ownerMentionAssistMode?: string }).ownerMentionAssistMode : undefined;
+          const ownerSettings = (value: unknown) => ownerMentionAssistSettingsSchema.safeParse(
+            value && typeof value === "object" ? (value as Record<string, unknown>).ownerMentionAssist : undefined
+          );
+          if (ownerMode !== undefined && !ownerSettings(await larkAgentProxyFetch(target)).success) {
+            return reply.code(409).send({ error: "Lark Agent does not support owner mention assist settings yet" });
+          }
+          const result = await larkAgentProxyFetch(target, {
             method,
             ...(method === "GET" ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
           });
+          if (ownerMode !== undefined) {
+            const echo = ownerSettings(result);
+            const readback = await larkAgentProxyFetch(target);
+            const confirmed = ownerSettings(readback);
+            if (!echo.success || echo.data.mode !== ownerMode || !confirmed.success || confirmed.data.mode !== ownerMode) {
+              return reply.code(502).send({ error: "Owner mention assist settings could not be confirmed; refresh before retrying" });
+            }
+            return readback;
+          }
+          return result;
         } catch (error) { return sendLarkAgentProxyError(reply, request, error); }
       }
     });
@@ -599,7 +622,7 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
     if (config.larkAgentUrl) appSettings.larkTrustedExecutionEnabled = remoteAppSettings.larkTrustedExecutionEnabled === true;
     appSettings.larkTurnAutoApprovalEnabled = remoteAppSettings.larkTurnAutoApprovalEnabled === true;
     const larkSettingsKnown = Object.fromEntries(Object.keys(larkAppSettingFields).map((key) => [
-      key, config.larkAgentUrl ? Object.hasOwn(remoteAppSettings, key) : !key.startsWith("larkTurnAutoApproval")
+      key, config.larkAgentUrl ? Object.hasOwn(remoteAppSettings, key) : !key.startsWith("larkTurnAutoApproval") && !key.startsWith("larkOwnerMentionAssist")
     ]));
     const trustedSenderIds = new Set([runtimeConfig.larkExecutionApproverId, ...runtimeConfig.trustedLarkCodexSenderIds].filter(Boolean));
     const trustedExecutionKnown = !config.larkAgentUrl || typeof remoteLarkSettings?.trustedExecutionEnabled === "boolean";

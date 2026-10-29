@@ -2,6 +2,12 @@
 
 These rules apply to the entire repository.
 
+## Shared Public Main
+
+- Internal and public repositories share one sanitized main. Publish with `npm run sync:main`; independently read back both remote main refs before reporting synchronization complete.
+- `npm run publication:check` scans all reachable main history. Keep the private denylist in Git common directory `publication-policy.json`, never in source. See `docs/REPOSITORY-SYNC.md`.
+- Do not merge pre-sanitization history or publish internal archive refs, all refs or tags. Keep private endpoints, identities, data sources and credentials in local configuration.
+
 ## Repository Changes
 
 - Preserve unrelated local files and inspect `git status --short` before staging changes.

@@ -223,6 +223,7 @@ export function LarkMessageDetailDrawer({ messageId, onClose }: { messageId: num
                 <dt>投递状态</dt><dd><span className="badge done">已发送</span></dd>
               </> : <>
                 <dt>是否提及</dt><dd>{message.mentioned ? "是" : "否"}</dd>
+                {message.reply_trigger === "owner_mention" && <><dt>回复触发</dt><dd>@本人协同</dd></>}
                 <dt>回复</dt><dd><span className={`badge ${badgeClass(message.reply_status)}`}>{statusText(message.reply_status)}</span></dd>
                 <dt>错误</dt><dd>{message.reply_error || "-"}</dd>
               </>}

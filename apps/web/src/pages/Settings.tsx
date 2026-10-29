@@ -58,6 +58,7 @@ export function SettingsPage() {
   const [modelCatalogError, setModelCatalogError] = useState(false);
   const [customModelMode, setCustomModelMode] = useState(false);
   const [spontaneousChatIds, setSpontaneousChatIds] = useState("");
+  const [ownerMentionAssistOwnerId, setOwnerMentionAssistOwnerId] = useState("");
   const [groupReactionChatIds, setGroupReactionChatIds] = useState("");
   const [spontaneousPercent, setSpontaneousPercent] = useState("8");
   const [spontaneousCooldownMinutes, setSpontaneousCooldownMinutes] = useState("10");
@@ -107,6 +108,7 @@ export function SettingsPage() {
     setApprovalDataSources((next.appSettings.larkTurnAutoApprovalDataSources ?? []).join("\n"));
     setDeploymentAdapterPath(next.appSettings.deploymentAdapterPath ?? "");
     setSpontaneousChatIds((next.appSettings.larkGroupSpontaneousChatIds ?? []).join("\n"));
+    setOwnerMentionAssistOwnerId(next.appSettings.larkOwnerMentionAssistOwnerId ?? "");
     setGroupReactionChatIds((next.appSettings.larkGroupMessageReactionChatIds ?? []).join("\n"));
     setSpontaneousPercent(String(Number(((next.appSettings.larkGroupSpontaneousReplyRate ?? 0.08) * 100).toFixed(4))));
     setSpontaneousCooldownMinutes(String(Number(((next.appSettings.larkGroupSpontaneousReplyCooldownMs ?? 600_000) / 60_000).toFixed(4))));
@@ -136,7 +138,13 @@ export function SettingsPage() {
     try {
       const appSettings = await api.updateSettings(patch);
       const refreshed = await api.settings();
+      for (const key of ["larkOwnerMentionAssistEnabled", "larkOwnerMentionAssistOwnerId"] as const) {
+        if (patch[key] !== undefined && (refreshed.larkSettingsKnown?.[key] !== true || refreshed.appSettings[key] !== patch[key])) {
+          throw new Error("群聊协同配置未确认，请刷新后重试。");
+        }
+      }
       setSettings({ ...refreshed, appSettings: { ...appSettings, larkTurnAutoApprovalModel: refreshed.appSettings.larkTurnAutoApprovalModel } });
+      setOwnerMentionAssistOwnerId(refreshed.appSettings.larkOwnerMentionAssistOwnerId ?? "");
       setLarkTurnAutoApprovalModel(refreshed.appSettings.larkTurnAutoApprovalModel);
       setApprovalDataSources((refreshed.appSettings.larkTurnAutoApprovalDataSources ?? []).join("\n"));
       setDeploymentAdapterPath(refreshed.appSettings.deploymentAdapterPath ?? "");
@@ -739,6 +747,13 @@ export function SettingsPage() {
               {!visibleEfforts.some(([value]) => value === currentReasoningEffort) && <option disabled value={currentReasoningEffort}>当前档位不受该模型支持</option>}
               {visibleEfforts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
+          </div>
+          <SettingToggle checked={settings.appSettings.larkOwnerMentionAssistEnabled ?? false} disabled={saving || settings.larkSettingsKnown?.larkOwnerMentionAssistEnabled !== true} label="协同处理群里 @本人的消息" onChange={(checked) => void updateSetting({ larkOwnerMentionAssistEnabled: checked })} />
+          {(settings.larkSettingsKnown?.larkOwnerMentionAssistEnabled !== true || settings.larkSettingsKnown?.larkOwnerMentionAssistOwnerId !== true) && <p className="subtle" role="status">群聊协同状态未知，当前 API / Agent 不可配置。</p>}
+          <div className="settingsField">
+            <label htmlFor="ownerMentionAssistOwnerId">被 @对象 open_id</label>
+            <div className="inlineControl larkModelControl"><input id="ownerMentionAssistOwnerId" disabled={saving || settings.larkSettingsKnown?.larkOwnerMentionAssistOwnerId !== true} maxLength={200} value={ownerMentionAssistOwnerId} onChange={event => setOwnerMentionAssistOwnerId(event.target.value)} placeholder="留空使用审批接收人" />
+              <button type="button" aria-label="保存协同对象" title="保存协同对象" disabled={saving || settings.larkSettingsKnown?.larkOwnerMentionAssistOwnerId !== true || !/^(?:ou_[A-Za-z0-9]+)?$/.test(ownerMentionAssistOwnerId.trim()) || ownerMentionAssistOwnerId.trim() === settings.appSettings.larkOwnerMentionAssistOwnerId} onClick={() => void updateSetting({ larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerId.trim() })}><Save size={16} /></button></div>
           </div>
           <SettingToggle checked={settings.appSettings.larkGroupSpontaneousRepliesEnabled} disabled={saving} label="允许 Agent 在群聊中随机加入对话" onChange={(checked) => void updateSetting({ larkGroupSpontaneousRepliesEnabled: checked })} />
           <div className="settingsField">

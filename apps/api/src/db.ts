@@ -142,6 +142,8 @@ export type AppSettings = {
   larkCodexReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
   larkStickerUsageMode: "off" | "explicit" | "natural" | "always";
   larkGroupSpontaneousRepliesEnabled: boolean;
+  larkOwnerMentionAssistEnabled: boolean;
+  larkOwnerMentionAssistOwnerId: string;
   larkGroupSpontaneousReplyRate: number;
   larkGroupSpontaneousReplyCooldownMs: number;
   larkGroupSpontaneousChatIds: string[];
@@ -208,7 +210,7 @@ export type LarkMessageRow = {
   reply_to_content: string | null;
   reply_to_raw_json: string | null;
   mentioned: number;
-  reply_trigger: "none" | "p2p" | "mention" | "spontaneous";
+  reply_trigger: "none" | "p2p" | "mention" | "spontaneous" | "owner_mention";
   reply_status: string;
   reply_error: string | null;
   reply_delivery_key: string | null;
@@ -870,6 +872,8 @@ export function getAppSettings(): AppSettings {
       ? values.get("larkStickerUsageMode") as AppSettings["larkStickerUsageMode"]
       : "natural",
     larkGroupSpontaneousRepliesEnabled: values.get("larkGroupSpontaneousRepliesEnabled") === "true",
+    larkOwnerMentionAssistEnabled: values.get("larkOwnerMentionAssistEnabled") === "true",
+    larkOwnerMentionAssistOwnerId: values.get("larkOwnerMentionAssistOwnerId") ?? "",
     larkGroupSpontaneousReplyRate: Number(values.get("larkGroupSpontaneousReplyRate") ?? config.larkGroupSpontaneousReplyRate),
     larkGroupSpontaneousReplyCooldownMs: Number.isInteger(storedSpontaneousCooldownMs) && storedSpontaneousCooldownMs >= 0 && storedSpontaneousCooldownMs <= 604_800_000 ? storedSpontaneousCooldownMs : 600_000,
     larkGroupSpontaneousChatIds: parseGroupChatIds(values.get("larkGroupSpontaneousChatIds")),
@@ -943,6 +947,12 @@ export function updateAppSettings(patch: Partial<AppSettings>): AppSettings {
   }
   if (patch.larkGroupSpontaneousRepliesEnabled !== undefined) {
     write.run("larkGroupSpontaneousRepliesEnabled", patch.larkGroupSpontaneousRepliesEnabled ? "true" : "false", updatedAt);
+  }
+  if (patch.larkOwnerMentionAssistEnabled !== undefined) {
+    write.run("larkOwnerMentionAssistEnabled", patch.larkOwnerMentionAssistEnabled ? "true" : "false", updatedAt);
+  }
+  if (patch.larkOwnerMentionAssistOwnerId !== undefined) {
+    write.run("larkOwnerMentionAssistOwnerId", patch.larkOwnerMentionAssistOwnerId, updatedAt);
   }
   if (patch.larkGroupSpontaneousReplyRate !== undefined) {
     write.run("larkGroupSpontaneousReplyRate", String(patch.larkGroupSpontaneousReplyRate), updatedAt);
