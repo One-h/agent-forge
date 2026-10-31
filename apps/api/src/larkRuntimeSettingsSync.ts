@@ -23,6 +23,7 @@ export const larkRuntimeSettingsSchema = z.object({
   reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]),
   stickerUsageMode: z.enum(["off", "explicit", "natural", "always"]),
   groupSpontaneousRepliesEnabled: z.boolean(),
+  topicNativeModeEnabled: z.boolean(),
   ownerMentionAssistEnabled: z.boolean(),
   ownerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema,
   groupSpontaneousReplyRate: z.number().min(0).max(1),
@@ -65,6 +66,7 @@ export const larkAppSettingFields = {
   larkCodexReasoningEffort: "reasoningEffort",
   larkStickerUsageMode: "stickerUsageMode",
   larkGroupSpontaneousRepliesEnabled: "groupSpontaneousRepliesEnabled",
+  larkTopicNativeModeEnabled: "topicNativeModeEnabled",
   larkOwnerMentionAssistEnabled: "ownerMentionAssistEnabled",
   larkOwnerMentionAssistOwnerId: "ownerMentionAssistOwnerId",
   larkGroupSpontaneousReplyRate: "groupSpontaneousReplyRate",
@@ -143,6 +145,9 @@ export async function syncLarkRuntimeSettings(
   const legacyApproval = options.allowLegacyBackup && patch.turnAutoApprovalModel === "gpt-6.1-sol";
   const hasApproval = patch.turnAutoApprovalEnabled !== undefined || patch.turnAutoApprovalModel !== undefined;
   if (!config.larkAgentUrl) {
+    if (patch.topicNativeModeEnabled !== undefined && !(options.allowLegacyBackup && patch.topicNativeModeEnabled === false)) {
+      throw failure("Lark Agent is not configured for native topics", 409);
+    }
     if ((patch.ownerMentionAssistEnabled !== undefined || patch.ownerMentionAssistOwnerId !== undefined)
         && !(options.allowLegacyBackup && patch.ownerMentionAssistEnabled === false && patch.ownerMentionAssistOwnerId === "")) {
       throw failure("Lark Agent is not configured for owner mention assist", 409);
@@ -167,6 +172,7 @@ export async function syncLarkRuntimeSettings(
       // Legacy restores send only supported optional fields; permission fields remain mandatory.
       if (options.allowLegacyBackup && !Object.hasOwn(current, key) && !["trustedExecutionEnabled", "workspaceRoot", "approverId", "trustedSenderIds"].includes(key)
           && (!key.startsWith("ownerMentionAssist") || defaultOwnerAssist)
+          && (key !== "topicNativeModeEnabled" || patch[key] === false)
           && (key !== "turnAutoApprovalEnabled" || (legacyApproval && patch[key] === false))) {
         delete patch[key];
         continue;

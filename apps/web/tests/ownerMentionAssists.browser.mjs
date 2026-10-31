@@ -54,6 +54,7 @@ function settingsFixture() {
     larkMessageListenerEnabled: false, larkCodexRepliesEnabled: false, larkExecutionReceiptsEnabled: false,
     larkCodexModel: "fixture-model", larkCodexReasoningEffort: "low", larkStickerUsageMode: "natural",
     larkOwnerMentionAssistEnabled: false, larkOwnerMentionAssistOwnerId: "",
+    larkTopicNativeModeEnabled: false,
     larkGroupSpontaneousRepliesEnabled: false, larkGroupSpontaneousReplyRate: 0.08,
     larkGroupSpontaneousReplyCooldownMs: 600000, larkGroupSpontaneousChatIds: [],
     larkTrustedExecutionEnabled: false, larkTurnAutoApprovalEnabled: false, larkTurnAutoApprovalModel: "fixture-model",
@@ -117,7 +118,7 @@ try {
       const respond = (value, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
       if (url.pathname === "/api/settings") {
         if (method === "PATCH") {
-          assert.ok(Object.keys(body).every(key => ["larkOwnerMentionAssistEnabled", "larkOwnerMentionAssistOwnerId"].includes(key)));
+          assert.ok(Object.keys(body).every(key => ["larkOwnerMentionAssistEnabled", "larkOwnerMentionAssistOwnerId", "larkTopicNativeModeEnabled"].includes(key)));
           if (!state.ignoreSettingPatch) Object.assign(state.settings.appSettings, body);
           return respond(state.settings.appSettings);
         }
@@ -183,6 +184,16 @@ try {
     const toggle = page.getByRole("checkbox", { name: "协同处理群里 @本人的消息", exact: true });
     const owner = page.getByLabel("被 @对象 open_id", { exact: true });
     const saveOwner = page.getByRole("button", { name: "保存协同对象", exact: true });
+    const topic = page.getByRole("checkbox", { name: "话题原生会话模式", exact: true });
+    await expect(topic).not.toBeChecked(); await expect(topic).toBeEnabled();
+    await page.getByText("话题原生会话模式", { exact: true }).click();
+    await expect(topic).toBeChecked(); await expect(topic).toBeEnabled();
+    assert.equal(state.settings.appSettings.larkTopicNativeModeEnabled, true);
+    await page.reload(); await expect(topic).toBeChecked();
+    await page.getByText("话题原生会话模式", { exact: true }).click();
+    await expect(topic).not.toBeChecked(); await expect(topic).toBeEnabled();
+    await topic.scrollIntoViewIfNeeded(); await screenshot("native-topic-settings");
+    note("native topic defaults off, toggles with confirmed readback and survives page reload");
     await expect(toggle).not.toBeChecked();
     await page.getByText("协同处理群里 @本人的消息", { exact: true }).click();
     await expect(toggle).toBeChecked(); await expect(toggle).toBeEnabled();
@@ -198,6 +209,7 @@ try {
     await checkOverflow("global settings", ".settingsField:has(#ownerMentionAssistOwnerId), .toggleRow");
     await screenshot("global-settings"); note("global switch, strict alphanumeric open_id, empty fallback and GET readback succeed");
     state.supported = false; await page.reload();
+    await expect(topic).toBeDisabled();
     await expect(toggle).toBeDisabled(); await expect(owner).toBeDisabled();
     await expect(page.getByText("群聊协同状态未知，当前 API / Agent 不可配置。", { exact: true })).toBeVisible();
     note("legacy API disables new settings and retains existing settings page");
@@ -205,6 +217,10 @@ try {
     await page.reload(); await page.getByText("协同处理群里 @本人的消息", { exact: true }).click();
     await expect(page.locator(".error")).toContainText("群聊协同配置未确认");
     await expect(toggle).not.toBeChecked(); note("ignored global PATCH is not reported as saved"); state.ignoreSettingPatch = false;
+    state.ignoreSettingPatch = true;
+    await page.getByText("话题原生会话模式", { exact: true }).click();
+    await expect(page.locator(".error")).toContainText("话题模式配置未确认");
+    await expect(topic).not.toBeChecked(); state.ignoreSettingPatch = false;
 
     await page.goto(`${origin}/?view=group`);
     const groupMode = page.getByRole("radiogroup", { name: "群聊协同模式", exact: true });

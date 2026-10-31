@@ -172,6 +172,7 @@ export type Settings = {
     larkCodexReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
     larkStickerUsageMode: "off" | "explicit" | "natural" | "always";
     larkGroupSpontaneousRepliesEnabled: boolean;
+    larkTopicNativeModeEnabled: boolean;
     larkOwnerMentionAssistEnabled: boolean;
     larkOwnerMentionAssistOwnerId: string;
     larkGroupSpontaneousReplyRate: number;
@@ -310,7 +311,7 @@ export type LarkMessage = {
   reply_to_content: string | null;
   reply_to_raw_json?: string | null;
   mentioned: number;
-  reply_trigger: "none" | "p2p" | "mention" | "spontaneous" | "owner_mention";
+  reply_trigger: "none" | "p2p" | "mention" | "spontaneous" | "owner_mention" | "topic";
   reply_status: string;
   reply_error: string | null;
   codex_status: "skipped" | "queued" | "running" | "answered" | "no_reply" | "failed" | "timeout";

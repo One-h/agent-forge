@@ -54,6 +54,7 @@ const settingsPatchSchema = z.object({
   larkCodexReasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]).optional(),
   larkStickerUsageMode: z.enum(["off", "explicit", "natural", "always"]).optional(),
   larkGroupSpontaneousRepliesEnabled: z.boolean().optional(),
+  larkTopicNativeModeEnabled: z.boolean().optional(),
   larkOwnerMentionAssistEnabled: z.boolean().optional(),
   larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema.optional(),
   larkGroupSpontaneousReplyRate: z.number().min(0).max(1).optional(),
@@ -141,6 +142,7 @@ const localBackupSchema = z.object({
     larkCodexReasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]).default("low"),
     larkStickerUsageMode: z.enum(["off", "explicit", "natural", "always"]).default("natural"),
     larkGroupSpontaneousRepliesEnabled: z.boolean().default(false),
+    larkTopicNativeModeEnabled: z.boolean().default(false),
     larkOwnerMentionAssistEnabled: z.boolean().default(false),
     larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema.default(""),
     larkGroupSpontaneousReplyRate: z.number().min(0).max(1).default(0.08),
@@ -622,7 +624,7 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
     if (config.larkAgentUrl) appSettings.larkTrustedExecutionEnabled = remoteAppSettings.larkTrustedExecutionEnabled === true;
     appSettings.larkTurnAutoApprovalEnabled = remoteAppSettings.larkTurnAutoApprovalEnabled === true;
     const larkSettingsKnown = Object.fromEntries(Object.keys(larkAppSettingFields).map((key) => [
-      key, config.larkAgentUrl ? Object.hasOwn(remoteAppSettings, key) : !key.startsWith("larkTurnAutoApproval") && !key.startsWith("larkOwnerMentionAssist")
+      key, config.larkAgentUrl ? Object.hasOwn(remoteAppSettings, key) : !key.startsWith("larkTurnAutoApproval") && !key.startsWith("larkOwnerMentionAssist") && key !== "larkTopicNativeModeEnabled"
     ]));
     const trustedSenderIds = new Set([runtimeConfig.larkExecutionApproverId, ...runtimeConfig.trustedLarkCodexSenderIds].filter(Boolean));
     const trustedExecutionKnown = !config.larkAgentUrl || typeof remoteLarkSettings?.trustedExecutionEnabled === "boolean";

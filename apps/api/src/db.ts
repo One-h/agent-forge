@@ -142,6 +142,7 @@ export type AppSettings = {
   larkCodexReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
   larkStickerUsageMode: "off" | "explicit" | "natural" | "always";
   larkGroupSpontaneousRepliesEnabled: boolean;
+  larkTopicNativeModeEnabled: boolean;
   larkOwnerMentionAssistEnabled: boolean;
   larkOwnerMentionAssistOwnerId: string;
   larkGroupSpontaneousReplyRate: number;
@@ -210,7 +211,7 @@ export type LarkMessageRow = {
   reply_to_content: string | null;
   reply_to_raw_json: string | null;
   mentioned: number;
-  reply_trigger: "none" | "p2p" | "mention" | "spontaneous" | "owner_mention";
+  reply_trigger: "none" | "p2p" | "mention" | "spontaneous" | "owner_mention" | "topic";
   reply_status: string;
   reply_error: string | null;
   reply_delivery_key: string | null;
@@ -872,6 +873,7 @@ export function getAppSettings(): AppSettings {
       ? values.get("larkStickerUsageMode") as AppSettings["larkStickerUsageMode"]
       : "natural",
     larkGroupSpontaneousRepliesEnabled: values.get("larkGroupSpontaneousRepliesEnabled") === "true",
+    larkTopicNativeModeEnabled: values.get("larkTopicNativeModeEnabled") === "true",
     larkOwnerMentionAssistEnabled: values.get("larkOwnerMentionAssistEnabled") === "true",
     larkOwnerMentionAssistOwnerId: values.get("larkOwnerMentionAssistOwnerId") ?? "",
     larkGroupSpontaneousReplyRate: Number(values.get("larkGroupSpontaneousReplyRate") ?? config.larkGroupSpontaneousReplyRate),
@@ -947,6 +949,9 @@ export function updateAppSettings(patch: Partial<AppSettings>): AppSettings {
   }
   if (patch.larkGroupSpontaneousRepliesEnabled !== undefined) {
     write.run("larkGroupSpontaneousRepliesEnabled", patch.larkGroupSpontaneousRepliesEnabled ? "true" : "false", updatedAt);
+  }
+  if (patch.larkTopicNativeModeEnabled !== undefined) {
+    write.run("larkTopicNativeModeEnabled", patch.larkTopicNativeModeEnabled ? "true" : "false", updatedAt);
   }
   if (patch.larkOwnerMentionAssistEnabled !== undefined) {
     write.run("larkOwnerMentionAssistEnabled", patch.larkOwnerMentionAssistEnabled ? "true" : "false", updatedAt);

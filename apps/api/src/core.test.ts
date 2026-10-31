@@ -989,6 +989,7 @@ test("settings API persists auto-review toggle", async () => {
       larkStickerUsageMode: "natural",
       larkGroupSpontaneousRepliesEnabled: false,
       larkOwnerMentionAssistEnabled: false,
+      larkTopicNativeModeEnabled: false,
       larkOwnerMentionAssistOwnerId: "",
       larkGroupSpontaneousReplyRate: config.larkGroupSpontaneousReplyRate,
       larkGroupSpontaneousReplyCooldownMs: config.larkGroupSpontaneousReplyCooldownMs,
@@ -2690,6 +2691,7 @@ function completeLarkRuntimeSettings(): Record<string, unknown> {
     groupSpontaneousRepliesEnabled: true, groupSpontaneousReplyRate: 0.5, groupSpontaneousReplyCooldownMs: 600_000,
     groupSpontaneousChatIds: ["oc_old"], trustedExecutionEnabled: true,
     ownerMentionAssistEnabled: false, ownerMentionAssistOwnerId: "",
+    topicNativeModeEnabled: false,
     turnAutoApprovalEnabled: true, turnAutoApprovalModel: "old-approval-model", turnAutoApprovalModelConfigurable: true, turnAutoApprovalDataSources: [],
     acknowledgeReactionEmoji: "THUMBSUP", groupMessageReactionEnabled: true, groupMessageReactionEmoji: "THUMBSUP",
     groupMessageReactionChatIds: ["oc_old"], groupContextMessageLimit: 50, groupContextMaxChars: 6000,
@@ -2713,6 +2715,7 @@ test("all global Lark settings map to one PATCH and independent GET before the l
     larkGroupSpontaneousRepliesEnabled: false, larkGroupSpontaneousReplyRate: 0, larkGroupSpontaneousReplyCooldownMs: 0,
     larkGroupSpontaneousChatIds: [" oc_b ", "oc_a", "oc_b"], larkTrustedExecutionEnabled: false,
     larkOwnerMentionAssistEnabled: true, larkOwnerMentionAssistOwnerId: "ou_owner",
+    larkTopicNativeModeEnabled: true,
     larkTurnAutoApprovalEnabled: false, larkTurnAutoApprovalModel: "new-approval-model", larkTurnAutoApprovalDataSources: ["analytics_demo", "orders_demo"], larkAcknowledgeReactionEmoji: "LAUGH",
     larkGroupMessageReactionEnabled: false, larkGroupMessageReactionEmoji: "HappyDragon",
     larkGroupMessageReactionChatIds: ["oc_b", "oc_a", "oc_b"], larkGroupContextMessageLimit: 8, larkGroupContextMaxChars: 750
@@ -2723,6 +2726,7 @@ test("all global Lark settings map to one PATCH and independent GET before the l
     groupSpontaneousRepliesEnabled: false, groupSpontaneousReplyRate: 0, groupSpontaneousReplyCooldownMs: 0,
     groupSpontaneousChatIds: ["oc_b", "oc_a"], trustedExecutionEnabled: false,
     ownerMentionAssistEnabled: true, ownerMentionAssistOwnerId: "ou_owner",
+    topicNativeModeEnabled: true,
     turnAutoApprovalEnabled: false, turnAutoApprovalModel: "new-approval-model", turnAutoApprovalDataSources: ["analytics_demo", "orders_demo"], acknowledgeReactionEmoji: "LAUGH",
     groupMessageReactionEnabled: false, groupMessageReactionEmoji: "HappyDragon", groupMessageReactionChatIds: ["oc_b", "oc_a"],
     groupContextMessageLimit: 8, groupContextMaxChars: 750
@@ -2748,7 +2752,7 @@ test("all global Lark settings map to one PATCH and independent GET before the l
     const saved = getAppSettings();
     assert.deepEqual(saved, { ...before, ...payload, larkGroupSpontaneousChatIds: ["oc_b", "oc_a"], larkGroupMessageReactionChatIds: ["oc_b", "oc_a"] });
     assert.equal((db.prepare("SELECT count(*) AS count FROM local_audit_events WHERE action = 'settings.updated'").get() as { count: number }).count, 1);
-    assert.equal(Object.keys(larkRuntimeSettingsSchema.shape).length, 27);
+    assert.equal(Object.keys(larkRuntimeSettingsSchema.shape).length, 28);
     assert.equal(Object.keys(expected).length, Object.keys(saved).filter((key) => key.startsWith("lark")).length);
   } finally { config.larkAgentUrl = previousUrl; globalThis.fetch = originalFetch; await app.close(); }
 });
