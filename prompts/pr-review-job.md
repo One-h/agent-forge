@@ -23,7 +23,7 @@ Code-review the existing Gitea pull request and post the review back to that PR.
 
 1. If `{{WORKSPACE_ROOT}}/skills/tea-pr-review/SKILL.md` exists, follow that workspace review workflow. Otherwise read PR metadata, base/head changes and prior comments using the configured API/CLI, inspect the relevant code and tests, and report actionable findings with file/line evidence. Verify that the posted comment belongs to this PR.
 2. Review only this existing PR. Do not create a branch, worktree, commit, push, or new PR.
-3. If an incremental review context is provided above, treat it as authoritative and narrower than the generic skill workflow: use the previous reviewed head as the base for the main review, inspect only the incremental diff plus prior unresolved findings, and do not re-review unchanged files unless needed to verify a specific prior finding.
+3. On first review, inspect the full diff. On follow-up review, check prior blocking findings first, then use a valid incremental diff as the main scope and reuse conclusions that still hold. Follow the review skill's judgment and re-review rules; targeted reads of unchanged callers, shared contracts, or recovery paths are allowed for a concrete risk. Avoid repeating a full review when prior coverage remains reliable; fall back to the full diff when it cannot be reused safely.
 4. Save the posted review body to `{{TASK_DIR}}/review.md`.
 5. Include a `triage` object in `final.json`. For review-only PR jobs, use `decision: "mid-human-review"` with scores that reflect review complexity, and summarize the review risk briefly.
 6. Record the key evidence and comment-post result in `{{TASK_DIR}}/verification.md`.

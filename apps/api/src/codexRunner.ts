@@ -270,9 +270,9 @@ export function buildPrReviewContext(issue: IssueRow, job: RepairJobRow): string
     previous.taskDir ? `Previous task package: \`${previous.taskDir}\`` : "",
     "",
     "Review scope for this run:",
-    `- Use \`${previous.headSha}..${issue.head_sha ?? "<current-head>"}\` as the primary diff range.`,
-    "- Re-check prior blocking findings only when they touch the incremental changes or are needed to verify that the author fixed them.",
-    "- Do not spend time re-reading unchanged files or re-reviewing the full base...head diff unless the incremental diff cannot be resolved safely.",
+    `- Use \`${previous.headSha}..${issue.head_sha ?? "<current-head>"}\` as the primary diff range when the review package or scope checks confirm it is valid; otherwise follow the review skill's full-diff fallback.`,
+    "- Check the status of prior blocking findings first, then review valid incremental changes and reuse conclusions that still hold.",
+    "- Read unchanged callers, shared contracts, or recovery paths for concrete risks when needed; stop once the evidence is sufficient and avoid repeating reliable prior coverage.",
     "- Keep the posted review concise and focused on new or still-unresolved issues."
   ].filter(Boolean).join("\n");
 }
