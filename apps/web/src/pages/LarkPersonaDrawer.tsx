@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Eye, RotateCcw, Save } from "lucide-react";
-import { api, type ConversationSettings, type ConversationSpontaneousReply, type ConversationStickerUsage, type ConversationStyle, type LarkCodexSession, type LarkCodexSessions, type PersonaInput } from "../api";
+import { api, type ConversationSettings, type ConversationSpontaneousReply, type ConversationStickerUsage, type ConversationStyle, type LarkCodexModel, type LarkCodexSession, type LarkCodexSessions, type PersonaInput } from "../api";
 import { DetailDrawer } from "../components/DetailDrawer";
 
 export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionReset }: { chatId: string; chatType: "group" | "p2p"; title: string; onClose: () => void; onSessionReset?: () => void }) {
   const [saved, setSaved] = useState<ConversationStyle | null>(null);
   const [conversationSettings, setConversationSettings] = useState<ConversationSettings | null>(null);
+  const [modelDraft, setModelDraft] = useState<string | null>(null);
+  const [modelCatalog, setModelCatalog] = useState<LarkCodexModel[]>([]);
   const [draft, setDraft] = useState<PersonaInput>({ mode: "default", name: "", instructions: "" });
   const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
@@ -33,6 +35,7 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
       if (cancelled) return;
       setSaved(result);
       setConversationSettings(settings);
+      setModelDraft(settings.codexModel?.override ?? null);
       syncSpontaneousDraft(settings);
       setDraft(result.persona);
       setPreview("");
@@ -40,6 +43,15 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [chatId, reload]);
+  const modelSettings = conversationSettings?.codexModel;
+  const useCustomModel = !loading && Boolean(modelSettings) && modelDraft !== null;
+  useEffect(() => {
+    if (!useCustomModel) return;
+    let cancelled = false;
+    void api.larkModels().then(({ models }) => { if (!cancelled) setModelCatalog(models); })
+      .catch(() => { if (!cancelled) setModelCatalog([]); });
+    return () => { cancelled = true; };
+  }, [useCustomModel, reload]);
   useEffect(() => {
     let cancelled = false;
     setSessions(null);
@@ -100,6 +112,19 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
     } catch (err) { setError(String(err)); }
     finally { setBusy(false); }
   };
+  const modelOverride = modelDraft?.trim() ?? null;
+  const modelInvalid = modelOverride !== null && !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(modelOverride);
+  const updateModel = async () => {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api.updateLarkConversationModel(chatId, modelOverride);
+      if (!result.codexModel || result.codexModel.override !== modelOverride) throw new Error("会话模型设置未能确认，请刷新后重试。");
+      setConversationSettings(result);
+      setModelDraft(result.codexModel.override);
+      setNotice("会话模型已保存，下一个新轮次生效。");
+    } catch (err) { setError(String(err)); }
+    finally { setBusy(false); }
+  };
   const updateOwnerMentionAssist = async (mode: "global" | "on" | "off") => {
     setBusy(true); setError(""); setNotice("");
     try {
@@ -148,6 +173,24 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
       {error && <div className="error" role="alert">{error}</div>}
       {notice && <div className="notice" role="status">{notice}</div>}
       {loading ? <p role="status">正在加载会话设置…</p> : !saved || !conversationSettings ? <button onClick={() => setReload((value) => value + 1)}>重试</button> : <>
+        <section className="conversationSettingSection">
+          <div><strong>Codex 模型</strong><p style={{ overflowWrap: "anywhere" }}>{modelSettings
+            ? `当前生效：${modelSettings.effectiveModel} · 全局：${modelSettings.globalModel}`
+            : "当前 Lark Agent 版本不支持会话模型设置。"}</p></div>
+          {modelSettings && <>
+            <div className="segmentedControl personaMode" aria-label="会话模型模式">
+              <button type="button" disabled={busy} aria-pressed={modelDraft === null} className={modelDraft === null ? "active" : ""} onClick={() => setModelDraft(null)}>跟随全局</button>
+              <button type="button" disabled={busy} aria-pressed={modelDraft !== null} className={modelDraft !== null ? "active" : ""} onClick={() => setModelDraft(modelDraft ?? modelSettings.override ?? modelSettings.globalModel)}>指定模型</button>
+            </div>
+            {modelDraft !== null && <>
+              <label className="personaField"><span>模型 ID</span>
+                <input list="conversation-codex-models" maxLength={120} value={modelDraft} disabled={busy} aria-invalid={modelInvalid} onChange={(event) => setModelDraft(event.target.value)} />
+              </label>
+              <datalist id="conversation-codex-models">{modelCatalog.map((model) => <option key={model.id} value={model.id}>{model.displayName}</option>)}</datalist>
+            </>}
+            <button className="primaryButton spontaneousSaveButton" type="button" disabled={busy || modelInvalid || modelOverride === modelSettings.override} onClick={() => void updateModel()}><Save size={15} /> 保存模型</button>
+          </>}
+        </section>
         <section className="conversationSettingSection">
           <div><strong>会话人设</strong><p>覆盖全局飞书助手的表达风格。当前轮次（含追加消息）保持原人设，下轮对话使用新配置。</p></div>
         <div className="segmentedControl personaMode" aria-label="人设模式">

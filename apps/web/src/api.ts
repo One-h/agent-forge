@@ -447,7 +447,12 @@ export type ConversationSpontaneousReply = {
   globalCooldownMs: number;
 };
 export type ConversationOwnerMentionAssist = { mode: "global" | "on" | "off"; globalEnabled: boolean; effectiveEnabled: boolean; ownerId: string };
-export type ConversationSettings = { stickerUsage: ConversationStickerUsage; spontaneousReply: ConversationSpontaneousReply; ownerMentionAssist?: ConversationOwnerMentionAssist };
+export type ConversationSettings = {
+  codexModel?: { override: string | null; effectiveModel: string; globalModel: string };
+  stickerUsage: ConversationStickerUsage;
+  spontaneousReply: ConversationSpontaneousReply;
+  ownerMentionAssist?: ConversationOwnerMentionAssist;
+};
 export type OwnerMentionAssist = {
   lark_message_id: number; id: number; owner_id: string; decision: string;
   status: "pending" | "handling" | "reconsidering" | "ready" | "needs_owner" | "ignored" | "sent" | "dismissed";
@@ -753,6 +758,7 @@ export const api = {
   larkConversationSettings: (chatId: string) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`),
   updateLarkOwnerMentionAssist: (chatId: string, ownerMentionAssistMode: ConversationOwnerMentionAssist["mode"]) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`, { method: "PATCH", body: JSON.stringify({ ownerMentionAssistMode }) }),
   updateLarkConversationSettings: (chatId: string, stickerUsageMode: ConversationStickerUsage["mode"]) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`, { method: "PATCH", body: JSON.stringify({ stickerUsageMode }) }),
+  updateLarkConversationModel: (chatId: string, codexModel: string | null) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`, { method: "PATCH", body: JSON.stringify({ codexModel }) }),
   updateLarkSpontaneousReply: (chatId: string, input: { spontaneousMode: ConversationSpontaneousReply["mode"]; spontaneousReplyRate?: number; spontaneousReplyCooldownMs?: number }) => request<ConversationSettings>(`/api/lark/chats/${encodeURIComponent(chatId)}/settings`, { method: "PATCH", body: JSON.stringify(input) }),
   larkMessageArtifacts: (id: number) => request<LarkMessageArtifacts>(`/api/lark/messages/${id}/artifacts`),
   larkMessageImages: (id: number) => request<LarkMessageImage[]>(`/api/lark/messages/${id}/images`),

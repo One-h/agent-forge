@@ -33,6 +33,11 @@ const repairBodySchema = z.object({
 });
 
 const modelIdSchema = z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/, "请输入有效的模型 ID");
+const conversationModelSchema = z.object({ codexModel: z.object({
+  override: modelIdSchema.nullable(),
+  effectiveModel: modelIdSchema,
+  globalModel: modelIdSchema
+}) });
 const deploymentAdapterSchema = z.string().trim().max(4096).refine(value => !value || path.isAbsolute(value), "部署适配脚本必须是绝对路径");
 const approvalHistoryQuerySchema = z.object({
   kind: z.enum(["auto", "manual", "all"]).default("auto"),
@@ -529,6 +534,7 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
         if (method === "PATCH") {
           const parsed = z.object({
             stickerUsageMode: z.enum(["global", "off", "explicit", "natural", "always"]).optional(),
+            codexModel: modelIdSchema.nullable().optional(),
             spontaneousMode: z.enum(["global", "on", "off"]).optional(),
             ownerMentionAssistMode: z.enum(["global", "on", "off"]).optional(),
             spontaneousReplyRate: z.number().min(0).max(1).optional(),
@@ -540,6 +546,7 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
         try {
           const target = `/v1/chats/${encodeURIComponent(params.data.chatId)}/settings`;
           const ownerMode = method === "PATCH" ? (body as { ownerMentionAssistMode?: string }).ownerMentionAssistMode : undefined;
+          const model = method === "PATCH" ? (body as { codexModel?: string | null }).codexModel : undefined;
           const ownerSettings = (value: unknown) => ownerMentionAssistSettingsSchema.safeParse(
             value && typeof value === "object" ? (value as Record<string, unknown>).ownerMentionAssist : undefined
           );
@@ -550,12 +557,25 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
             method,
             ...(method === "GET" ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
           });
-          if (ownerMode !== undefined) {
-            const echo = ownerSettings(result);
+          if (ownerMode !== undefined || model !== undefined) {
             const readback = await larkAgentProxyFetch(target);
-            const confirmed = ownerSettings(readback);
-            if (!echo.success || echo.data.mode !== ownerMode || !confirmed.success || confirmed.data.mode !== ownerMode) {
-              return reply.code(502).send({ error: "Owner mention assist settings could not be confirmed; refresh before retrying" });
+            if (ownerMode !== undefined) {
+              const echo = ownerSettings(result);
+              const confirmed = ownerSettings(readback);
+              if (!echo.success || echo.data.mode !== ownerMode || !confirmed.success || confirmed.data.mode !== ownerMode) {
+                return reply.code(502).send({ error: "Owner mention assist settings could not be confirmed; refresh before retrying" });
+              }
+            }
+            if (model !== undefined) {
+              const matches = (value: unknown) => {
+                const parsed = conversationModelSchema.safeParse(value);
+                if (!parsed.success) return false;
+                const { override, effectiveModel, globalModel } = parsed.data.codexModel;
+                return override === model && effectiveModel === (model ?? globalModel);
+              };
+              if (!matches(result) || !matches(readback)) {
+                return reply.code(502).send({ error: "会话模型设置未能确认，请刷新后重试。" });
+              }
             }
             return readback;
           }

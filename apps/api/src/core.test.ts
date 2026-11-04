@@ -1130,6 +1130,36 @@ test("conversation settings proxy forwards persona and sticker policies with aut
   } finally { await app.close(); config.larkAgentUrl = previousUrl; config.larkAgentToken = previousToken; globalThis.fetch = originalFetch; }
 });
 
+test("conversation model proxy confirms persisted overrides and resets, and rejects unconfirmed writes", async () => {
+  const previousUrl = config.larkAgentUrl;
+  const originalFetch = globalThis.fetch;
+  config.larkAgentUrl = "http://lark-agent.test";
+  const calls: Array<{ method?: string; url: string; body?: { codexModel: string | null } }> = [];
+  let stored: string | null = null;
+  let persist = true;
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ method: init?.method ?? "GET", url: String(url), body });
+    if (body && persist) stored = body.codexModel;
+    const override = body ? body.codexModel : stored;
+    return new Response(JSON.stringify({ codexModel: { override, effectiveModel: override ?? "global-model", globalModel: "global-model" } }));
+  };
+  const app = Fastify({ logger: false });
+  await app.register(issueRoutes);
+  try {
+    const url = "/api/lark/chats/oc_private/settings";
+    const patch = (codexModel: string | null) => app.inject({ method: "PATCH", url, payload: { codexModel } });
+    assert.equal((await patch("../bad")).statusCode, 400);
+    assert.equal(calls.length, 0);
+    assert.equal((await patch(" provider/chat-model ")).json().codexModel.override, "provider/chat-model");
+    assert.deepEqual(calls[0], { method: "PATCH", url: "http://lark-agent.test/v1/chats/oc_private/settings", body: { codexModel: "provider/chat-model" } });
+    assert.equal(calls[1].method, "GET");
+    assert.deepEqual((await patch(null)).json().codexModel, { override: null, effectiveModel: "global-model", globalModel: "global-model" });
+    persist = false;
+    assert.equal((await patch("not-saved")).statusCode, 502);
+  } finally { await app.close(); config.larkAgentUrl = previousUrl; globalThis.fetch = originalFetch; }
+});
+
 test("approval history proxy validates filters and forwards authenticated read-only requests", async () => {
   const previousUrl = config.larkAgentUrl;
   const previousToken = config.larkAgentToken;
