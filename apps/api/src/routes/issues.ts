@@ -23,7 +23,7 @@ import { rescheduleGiteaSyncTimer } from "../worker.js";
 import { defaultLarkAcknowledgeReactionEmoji, isLarkReactionEmojiType } from "../larkReactionEmojis.js";
 import { apiErrorCodes } from "../errorCodes.js";
 import { LarkAgentResponseError, larkAgentFetch, larkAgentProxyFetch, larkAgentRequest } from "../larkAgentIntegration.js";
-import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, ownerMentionAssistOwnerIdSchema, ownerMentionAssistSettingsSchema, readLarkAppSettings, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
+import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, ownerMentionAssistBotIdsSchema, ownerMentionAssistOwnerIdSchema, ownerMentionAssistSettingsSchema, readLarkAppSettings, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
 import { requireLarkHostAuthorization } from "../larkHostAuthorization.js";
 
 const repairBodySchema = z.object({
@@ -62,6 +62,7 @@ const settingsPatchSchema = z.object({
   larkTopicNativeModeEnabled: z.boolean().optional(),
   larkOwnerMentionAssistEnabled: z.boolean().optional(),
   larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema.optional(),
+  larkOwnerMentionAssistBotIds: ownerMentionAssistBotIdsSchema.optional(),
   larkGroupSpontaneousReplyRate: z.number().min(0).max(1).optional(),
   larkGroupSpontaneousReplyCooldownMs: z.number().int().min(0).max(604_800_000).optional(),
   larkGroupSpontaneousChatIds: z.array(z.string().trim().regex(/^oc_[A-Za-z0-9]+$/, "群 ID 必须是 oc_ 开头的有效 ID")).max(200).transform((ids) => [...new Set(ids)]).optional(),
@@ -150,6 +151,7 @@ const localBackupSchema = z.object({
     larkTopicNativeModeEnabled: z.boolean().default(false),
     larkOwnerMentionAssistEnabled: z.boolean().default(false),
     larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema.default(""),
+    larkOwnerMentionAssistBotIds: ownerMentionAssistBotIdsSchema.default([]),
     larkGroupSpontaneousReplyRate: z.number().min(0).max(1).default(0.08),
     larkGroupSpontaneousReplyCooldownMs: z.number().int().min(0).max(604_800_000).default(600_000),
     larkGroupSpontaneousChatIds: z.array(z.string().trim().regex(/^oc_[A-Za-z0-9]+$/)).max(200).default([]),

@@ -175,6 +175,7 @@ export type Settings = {
     larkTopicNativeModeEnabled: boolean;
     larkOwnerMentionAssistEnabled: boolean;
     larkOwnerMentionAssistOwnerId: string;
+    larkOwnerMentionAssistBotIds: string[];
     larkGroupSpontaneousReplyRate: number;
     larkGroupSpontaneousReplyCooldownMs: number;
     larkGroupSpontaneousChatIds: string[];

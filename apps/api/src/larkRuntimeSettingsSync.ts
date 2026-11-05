@@ -9,6 +9,7 @@ const chatIds = z.array(z.string().regex(/^oc_[A-Za-z0-9]+$/)).max(200);
 const emoji = z.string().refine(isLarkReactionEmojiType);
 export const approvalDataSourcesSchema = z.array(z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/).transform(value => value.toLowerCase())).max(100).transform(values => [...new Set(values)]);
 export const ownerMentionAssistOwnerIdSchema = z.string().trim().max(200).regex(/^(?:ou_[A-Za-z0-9]+)?$/);
+export const ownerMentionAssistBotIdsSchema = z.array(z.string().trim().max(200).regex(/^ou_[A-Za-z0-9]+$/)).max(100).transform(ids => [...new Set(ids)]);
 export const ownerMentionAssistSettingsSchema = z.object({
   mode: z.enum(["global", "on", "off"]), globalEnabled: z.boolean(), effectiveEnabled: z.boolean(), ownerId: ownerMentionAssistOwnerIdSchema
 });
@@ -26,6 +27,7 @@ export const larkRuntimeSettingsSchema = z.object({
   topicNativeModeEnabled: z.boolean(),
   ownerMentionAssistEnabled: z.boolean(),
   ownerMentionAssistOwnerId: ownerMentionAssistOwnerIdSchema,
+  ownerMentionAssistBotIds: ownerMentionAssistBotIdsSchema,
   groupSpontaneousReplyRate: z.number().min(0).max(1),
   groupSpontaneousReplyCooldownMs: z.number().int().min(0).max(604_800_000),
   groupSpontaneousChatIds: chatIds,
@@ -69,6 +71,7 @@ export const larkAppSettingFields = {
   larkTopicNativeModeEnabled: "topicNativeModeEnabled",
   larkOwnerMentionAssistEnabled: "ownerMentionAssistEnabled",
   larkOwnerMentionAssistOwnerId: "ownerMentionAssistOwnerId",
+  larkOwnerMentionAssistBotIds: "ownerMentionAssistBotIds",
   larkGroupSpontaneousReplyRate: "groupSpontaneousReplyRate",
   larkGroupSpontaneousReplyCooldownMs: "groupSpontaneousReplyCooldownMs",
   larkGroupSpontaneousChatIds: "groupSpontaneousChatIds",
@@ -152,6 +155,9 @@ export async function syncLarkRuntimeSettings(
         && !(options.allowLegacyBackup && patch.ownerMentionAssistEnabled === false && patch.ownerMentionAssistOwnerId === "")) {
       throw failure("Lark Agent is not configured for owner mention assist", 409);
     }
+    if (patch.ownerMentionAssistBotIds !== undefined && !(options.allowLegacyBackup && patch.ownerMentionAssistBotIds.length === 0)) {
+      throw failure("Lark Agent is not configured for owner mention assist bot IDs", 409);
+    }
     if (hasApproval && !(legacyApproval && patch.turnAutoApprovalEnabled === false)) {
       throw failure("Lark Agent is not configured for turn auto-approval", 409);
     }
@@ -171,7 +177,7 @@ export async function syncLarkRuntimeSettings(
     if (!readableLarkRuntimeSetting(current, key)) {
       // Legacy restores send only supported optional fields; permission fields remain mandatory.
       if (options.allowLegacyBackup && !Object.hasOwn(current, key) && !["trustedExecutionEnabled", "workspaceRoot", "approverId", "trustedSenderIds"].includes(key)
-          && (!key.startsWith("ownerMentionAssist") || defaultOwnerAssist)
+          && (key === "ownerMentionAssistBotIds" ? patch.ownerMentionAssistBotIds?.length === 0 : !key.startsWith("ownerMentionAssist") || defaultOwnerAssist)
           && (key !== "topicNativeModeEnabled" || patch[key] === false)
           && (key !== "turnAutoApprovalEnabled" || (legacyApproval && patch[key] === false))) {
         delete patch[key];

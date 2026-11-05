@@ -157,3 +157,153 @@ test("global assist defaults, strict fields, backup restore and compensation use
     assert.equal((await restore(legacy)).statusCode, 200); assert.equal(getAppSettings().larkOwnerMentionAssistEnabled, false);
   } finally { globalThis.fetch = fetch; Object.assign(config, previous); await app.close(); }
 });
+
+test("assist bot IDs persist normalized unique IDs, validate strictly, mirror Agent state and reset to empty", async () => {
+  const previous = { ...config }, fetch = globalThis.fetch;
+  assertTestDatabaseIsolation(config.databasePath); migrate();
+  db.prepare("DELETE FROM app_settings").run();
+  assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, []);
+  updatePersistedRuntimeConfig({ ...persistedRuntimeConfig(), workspaceRoot: path.dirname(config.databasePath) });
+  config.larkAgentUrl = "http://agent.test";
+  let remote: Record<string, unknown> = { ...larkAppSettingsPatch(getAppSettings()), workspaceRoot: config.workspaceRoot, approverId: "", trustedSenderIds: [], turnAutoApprovalModelConfigurable: true };
+  const calls: Array<{ method: string; body?: unknown }> = [];
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).endsWith("/v1/settings")) return new Response("{}");
+    calls.push({ method: init?.method ?? "GET", ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
+    if (init?.method === "PATCH") remote = { ...remote, ...JSON.parse(String(init.body)) };
+    return new Response(JSON.stringify(remote));
+  };
+  const app = Fastify(); await app.register(issueRoutes);
+  const save = (value: unknown) => app.inject({ method: "PATCH", url: "/api/settings", payload: { larkOwnerMentionAssistBotIds: value } });
+  const restore = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/api/settings/backup/restore", payload });
+  try {
+    for (const value of [null, "ou_bot", {}, [1], [null], [""], [" "], ["oc_chat"], ["ou_"], ["ou_bad-id"], [`ou_${"x".repeat(198)}`], Array.from({ length: 101 }, (_, i) => `ou_bot${i}`)]) {
+      assert.equal((await save(value)).statusCode, 400, JSON.stringify(value));
+    }
+    assert.equal((await app.inject({ method: "PATCH", url: "/api/settings", payload: { larkOwnerMentionAssistBotIds: [], unexpected: true } })).statusCode, 400);
+    assert.deepEqual(calls, []);
+    const saved = await save([" ou_botB \n", "ou_botA", "ou_botB"]);
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.deepEqual(saved.json().larkOwnerMentionAssistBotIds, ["ou_botB", "ou_botA"]);
+    assert.deepEqual(calls, [{ method: "GET" }, { method: "PATCH", body: { ownerMentionAssistBotIds: ["ou_botB", "ou_botA"] } }, { method: "GET" }]);
+    const backup = (await app.inject({ method: "GET", url: "/api/settings/backup" })).json();
+    assert.deepEqual(backup.appSettings.larkOwnerMentionAssistBotIds, ["ou_botB", "ou_botA"]);
+    const invalidBackup = structuredClone(backup); invalidBackup.appSettings.larkOwnerMentionAssistBotIds = ["bad"];
+    const beforeInvalidRestore = calls.length;
+    assert.equal((await restore(invalidBackup)).statusCode, 400);
+    assert.equal(calls.length, beforeInvalidRestore);
+    remote.ownerMentionAssistBotIds = ["ou_remote"];
+    const read = (await app.inject({ method: "GET", url: "/api/settings" })).json();
+    assert.deepEqual(read.appSettings.larkOwnerMentionAssistBotIds, ["ou_remote"]);
+    assert.equal(read.larkSettingsKnown.larkOwnerMentionAssistBotIds, true);
+    assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, ["ou_botB", "ou_botA"], "GET must not persist remote state");
+    assert.equal((await save([])).statusCode, 200);
+    assert.deepEqual(remote.ownerMentionAssistBotIds, []);
+    assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, []);
+    assert.equal((await restore(backup)).statusCode, 200);
+    assert.deepEqual(remote.ownerMentionAssistBotIds, ["ou_botB", "ou_botA"]);
+    const boundary = Array.from({ length: 100 }, (_, i) => i === 0 ? `ou_${"x".repeat(197)}` : `ou_bot${i}`);
+    assert.equal((await save(boundary)).statusCode, 200);
+    assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, boundary);
+    const legacy = structuredClone(backup); delete legacy.appSettings.larkOwnerMentionAssistBotIds;
+    assert.equal((await restore(legacy)).statusCode, 200);
+    assert.deepEqual(remote.ownerMentionAssistBotIds, [], "old backup resets a supported Agent to empty");
+    assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, []);
+  } finally { globalThis.fetch = fetch; Object.assign(config, previous); await app.close(); }
+});
+
+test("assist bot sync confirms sets and rolls back both empty and populated lists after echo, readback or local failures", async () => {
+  const previous = { ...config }, fetch = globalThis.fetch;
+  assertTestDatabaseIsolation(config.databasePath); migrate();
+  config.larkAgentUrl = "http://agent.test";
+  const app = Fastify(); await app.register(issueRoutes);
+  try {
+    for (const before of [[], ["ou_previous"]]) {
+      for (const failure of ["echo", "readback", "local"] as const) {
+        updateAppSettings({ larkOwnerMentionAssistBotIds: before });
+        let remote = [...before];
+        const patches: Array<{ ownerMentionAssistBotIds: string[] }> = [];
+        const methods: string[] = [];
+        globalThis.fetch = async (_url, init) => {
+          assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, before, "no local commit before readback or during compensation");
+          methods.push(init?.method ?? "GET");
+          if (init?.method === "PATCH") {
+            const patch = JSON.parse(String(init.body)); patches.push(patch);
+            remote = patch.ownerMentionAssistBotIds;
+            if (failure === "echo" && patches.length === 1) return new Response(JSON.stringify({ ownerMentionAssistBotIds: ["ou_wrong"] }));
+          } else if (failure === "readback" && patches.length === 1) {
+            return new Response(JSON.stringify({ ownerMentionAssistBotIds: ["ou_wrong"] }));
+          }
+          return new Response(JSON.stringify({ ownerMentionAssistBotIds: remote }));
+        };
+        if (failure === "local") db.exec("CREATE TEMP TRIGGER reject_bot_ids BEFORE UPDATE ON app_settings WHEN NEW.key = 'larkOwnerMentionAssistBotIds' BEGIN SELECT RAISE(FAIL, 'local bot save failed'); END");
+        try {
+          const desired = before.length ? [] : ["ou_next"];
+          const result = await app.inject({ method: "PATCH", url: "/api/settings", payload: { larkOwnerMentionAssistBotIds: desired } });
+          assert.equal(result.statusCode, failure === "local" ? 500 : 502, result.body);
+          assert.match(result.body, /previous remote runtime settings restored/);
+          assert.deepEqual(patches, [{ ownerMentionAssistBotIds: desired }, { ownerMentionAssistBotIds: before }]);
+          assert.deepEqual(methods, failure === "echo" ? ["GET", "PATCH", "PATCH", "GET"] : ["GET", "PATCH", "GET", "PATCH", "GET"]);
+          assert.deepEqual(remote, before);
+          assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, before);
+        } finally { if (failure === "local") db.exec("DROP TRIGGER reject_bot_ids"); }
+      }
+    }
+    const methods: string[] = [];
+    globalThis.fetch = async (_url, init) => {
+      methods.push(init?.method ?? "GET");
+      return new Response(JSON.stringify({ ownerMentionAssistBotIds: init?.method === "PATCH" || methods.length > 1 ? ["ou_b", "ou_a"] : [] }));
+    };
+    const reordered = await app.inject({ method: "PATCH", url: "/api/settings", payload: { larkOwnerMentionAssistBotIds: ["ou_a", "ou_b"] } });
+    assert.equal(reordered.statusCode, 200, reordered.body);
+    assert.deepEqual(methods, ["GET", "PATCH", "GET"]);
+  } finally { globalThis.fetch = fetch; Object.assign(config, previous); await app.close(); }
+});
+
+test("legacy Agents reject explicit bot edits and nonempty restores but accept missing empty backup defaults", async () => {
+  const previous = { ...config }, fetch = globalThis.fetch;
+  assertTestDatabaseIsolation(config.databasePath); migrate();
+  db.prepare("DELETE FROM app_settings").run();
+  updatePersistedRuntimeConfig({ ...persistedRuntimeConfig(), workspaceRoot: path.dirname(config.databasePath) });
+  updateAppSettings({ larkOwnerMentionAssistEnabled: true, larkOwnerMentionAssistOwnerId: "ou_owner", larkOwnerMentionAssistBotIds: ["ou_bot"] });
+  config.larkAgentUrl = "http://agent.test";
+  let remote: Record<string, unknown> = { ...larkAppSettingsPatch(getAppSettings()), workspaceRoot: config.workspaceRoot, approverId: "", trustedSenderIds: [], turnAutoApprovalModelConfigurable: true };
+  delete remote.ownerMentionAssistBotIds;
+  const patches: Array<Record<string, unknown>> = [];
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).endsWith("/v1/settings")) return new Response("{}");
+    if (init?.method === "PATCH") { const patch = JSON.parse(String(init.body)); patches.push(patch); remote = { ...remote, ...patch }; }
+    return new Response(JSON.stringify(remote));
+  };
+  const app = Fastify(); await app.register(issueRoutes);
+  const save = (value: unknown) => app.inject({ method: "PATCH", url: "/api/settings", payload: { larkOwnerMentionAssistBotIds: value } });
+  const restore = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/api/settings/backup/restore", payload });
+  try {
+    const backup = (await app.inject({ method: "GET", url: "/api/settings/backup" })).json();
+    const legacy = structuredClone(backup); delete legacy.appSettings.larkOwnerMentionAssistBotIds;
+    assert.equal((await app.inject({ method: "GET", url: "/api/settings" })).json().larkSettingsKnown.larkOwnerMentionAssistBotIds, false);
+    for (const value of [[], ["ou_next"]]) assert.equal((await save(value)).statusCode, 409);
+    assert.equal((await restore(backup)).statusCode, 400);
+    assert.deepEqual(patches, []);
+    assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, ["ou_bot"]);
+    const restored = await restore(legacy);
+    assert.equal(restored.statusCode, 200, restored.body);
+    assert.equal(Object.hasOwn(patches.at(-1)!, "ownerMentionAssistBotIds"), false);
+    assert.equal(getAppSettings().larkOwnerMentionAssistEnabled, true, "bot-list compatibility must not require disabling existing assist");
+    assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, []);
+    for (const malformed of [null, "ou_bot", ["bad"], Array(101).fill("ou_bot")]) {
+      remote.ownerMentionAssistBotIds = malformed;
+      assert.equal((await app.inject({ method: "GET", url: "/api/settings" })).json().larkSettingsKnown.larkOwnerMentionAssistBotIds, false);
+      const count: number = patches.length;
+      assert.equal((await save([])).statusCode, 409);
+      assert.equal((await restore(legacy)).statusCode, 400, "malformed is not an absent legacy field");
+      assert.equal(patches.length, count);
+    }
+    config.larkAgentUrl = "";
+    for (const value of [[], ["ou_bot"]]) assert.equal((await save(value)).statusCode, 409);
+    assert.equal((await restore(backup)).statusCode, 400);
+    Object.assign(legacy.appSettings, { larkOwnerMentionAssistEnabled: false, larkOwnerMentionAssistOwnerId: "" });
+    assert.equal((await restore(legacy)).statusCode, 200);
+    assert.deepEqual(getAppSettings().larkOwnerMentionAssistBotIds, []);
+  } finally { globalThis.fetch = fetch; Object.assign(config, previous); await app.close(); }
+});

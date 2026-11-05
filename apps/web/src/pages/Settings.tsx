@@ -59,6 +59,7 @@ export function SettingsPage() {
   const [customModelMode, setCustomModelMode] = useState(false);
   const [spontaneousChatIds, setSpontaneousChatIds] = useState("");
   const [ownerMentionAssistOwnerId, setOwnerMentionAssistOwnerId] = useState("");
+  const [ownerMentionAssistBotIds, setOwnerMentionAssistBotIds] = useState("");
   const [groupReactionChatIds, setGroupReactionChatIds] = useState("");
   const [spontaneousPercent, setSpontaneousPercent] = useState("8");
   const [spontaneousCooldownMinutes, setSpontaneousCooldownMinutes] = useState("10");
@@ -109,6 +110,7 @@ export function SettingsPage() {
     setDeploymentAdapterPath(next.appSettings.deploymentAdapterPath ?? "");
     setSpontaneousChatIds((next.appSettings.larkGroupSpontaneousChatIds ?? []).join("\n"));
     setOwnerMentionAssistOwnerId(next.appSettings.larkOwnerMentionAssistOwnerId ?? "");
+    setOwnerMentionAssistBotIds((next.appSettings.larkOwnerMentionAssistBotIds ?? []).join("\n"));
     setGroupReactionChatIds((next.appSettings.larkGroupMessageReactionChatIds ?? []).join("\n"));
     setSpontaneousPercent(String(Number(((next.appSettings.larkGroupSpontaneousReplyRate ?? 0.08) * 100).toFixed(4))));
     setSpontaneousCooldownMinutes(String(Number(((next.appSettings.larkGroupSpontaneousReplyCooldownMs ?? 600_000) / 60_000).toFixed(4))));
@@ -143,8 +145,16 @@ export function SettingsPage() {
           throw new Error(key === "larkTopicNativeModeEnabled" ? "话题模式配置未确认，请刷新后重试。" : "群聊协同配置未确认，请刷新后重试。");
         }
       }
+      if (patch.larkOwnerMentionAssistBotIds !== undefined) {
+        const expected = [...new Set(patch.larkOwnerMentionAssistBotIds)].sort();
+        const actual = [...new Set(refreshed.appSettings.larkOwnerMentionAssistBotIds ?? [])].sort();
+        if (refreshed.larkSettingsKnown?.larkOwnerMentionAssistBotIds !== true || JSON.stringify(actual) !== JSON.stringify(expected)) {
+          throw new Error("群聊协同机器人配置未确认，请刷新后重试。");
+        }
+      }
       setSettings({ ...refreshed, appSettings: { ...appSettings, larkTurnAutoApprovalModel: refreshed.appSettings.larkTurnAutoApprovalModel } });
       setOwnerMentionAssistOwnerId(refreshed.appSettings.larkOwnerMentionAssistOwnerId ?? "");
+      setOwnerMentionAssistBotIds((refreshed.appSettings.larkOwnerMentionAssistBotIds ?? []).join("\n"));
       setLarkTurnAutoApprovalModel(refreshed.appSettings.larkTurnAutoApprovalModel);
       setApprovalDataSources((refreshed.appSettings.larkTurnAutoApprovalDataSources ?? []).join("\n"));
       setDeploymentAdapterPath(refreshed.appSettings.deploymentAdapterPath ?? "");
@@ -453,6 +463,10 @@ export function SettingsPage() {
   const showCustomModelInput = modelCatalog !== null && (modelCatalog.length === 0 || customModelMode || !selectedCatalogModel);
   const showCustomApprovalModelInput = !modelCatalog?.length || customApprovalModelMode || !modelCatalog.some((model) => model.id === settings.appSettings.larkTurnAutoApprovalModel);
   const approvalModelDisabled = saving || !settings.larkCodexResponder.turnAutoApprovalModelConfigurable;
+  const assistBotIds = [...new Set(ownerMentionAssistBotIds.split(/[,，;；\s]+/).filter(Boolean))];
+  const assistBotIdsValid = assistBotIds.length <= 100 && assistBotIds.every(id => id.length <= 200 && /^ou_[A-Za-z0-9]+$/.test(id));
+  const assistBotIdsChanged = JSON.stringify([...assistBotIds].sort()) !== JSON.stringify([...(settings.appSettings.larkOwnerMentionAssistBotIds ?? [])].sort());
+  const assistBotIdsDisabled = saving || settings.larkSettingsKnown?.larkOwnerMentionAssistBotIds !== true;
   const currentReasoningEffort = settings.appSettings.larkCodexReasoningEffort ?? "low";
   const supportedEfforts = selectedCatalogModel && !customModelMode
     ? reasoningEffortOptions.filter(([value]) => selectedCatalogModel.efforts.includes(value))
@@ -754,6 +768,13 @@ export function SettingsPage() {
             <label htmlFor="ownerMentionAssistOwnerId">被 @对象 open_id</label>
             <div className="inlineControl larkModelControl"><input id="ownerMentionAssistOwnerId" disabled={saving || settings.larkSettingsKnown?.larkOwnerMentionAssistOwnerId !== true} maxLength={200} value={ownerMentionAssistOwnerId} onChange={event => setOwnerMentionAssistOwnerId(event.target.value)} placeholder="留空使用审批接收人" />
               <button type="button" aria-label="保存协同对象" title="保存协同对象" disabled={saving || settings.larkSettingsKnown?.larkOwnerMentionAssistOwnerId !== true || !/^(?:ou_[A-Za-z0-9]+)?$/.test(ownerMentionAssistOwnerId.trim()) || ownerMentionAssistOwnerId.trim() === settings.appSettings.larkOwnerMentionAssistOwnerId} onClick={() => void updateSetting({ larkOwnerMentionAssistOwnerId: ownerMentionAssistOwnerId.trim() })}><Save size={16} /></button></div>
+          </div>
+          <div className="settingsField">
+            <label htmlFor="ownerMentionAssistBotIds">协同机器人 open_id 白名单</label>
+            <textarea id="ownerMentionAssistBotIds" disabled={assistBotIdsDisabled} rows={3} aria-invalid={!assistBotIdsValid} value={ownerMentionAssistBotIds} onChange={event => setOwnerMentionAssistBotIds(event.target.value)} />
+            {!assistBotIdsValid && <span className="subtle" role="alert">最多 100 个 ou_ 开头的有效 open_id，每个不超过 200 字符。</span>}
+            {settings.larkSettingsKnown?.larkOwnerMentionAssistBotIds !== true && <span className="subtle" role="status">协同机器人配置状态未知，当前 API / Agent 不可配置。</span>}
+            <div className="inlineActions"><button type="button" aria-label="保存协同机器人白名单" title="保存协同机器人白名单" disabled={assistBotIdsDisabled || !assistBotIdsValid || !assistBotIdsChanged} onClick={() => void updateSetting({ larkOwnerMentionAssistBotIds: assistBotIds })}><Save size={16} /></button></div>
           </div>
           <SettingToggle checked={settings.appSettings.larkTopicNativeModeEnabled ?? false} disabled={saving || settings.larkSettingsKnown?.larkTopicNativeModeEnabled !== true} label="话题原生会话模式" onChange={(checked) => void updateSetting({ larkTopicNativeModeEnabled: checked })} />
           <SettingToggle checked={settings.appSettings.larkGroupSpontaneousRepliesEnabled} disabled={saving} label="允许 Agent 在群聊中随机加入对话" onChange={(checked) => void updateSetting({ larkGroupSpontaneousRepliesEnabled: checked })} />

@@ -145,6 +145,7 @@ export type AppSettings = {
   larkTopicNativeModeEnabled: boolean;
   larkOwnerMentionAssistEnabled: boolean;
   larkOwnerMentionAssistOwnerId: string;
+  larkOwnerMentionAssistBotIds: string[];
   larkGroupSpontaneousReplyRate: number;
   larkGroupSpontaneousReplyCooldownMs: number;
   larkGroupSpontaneousChatIds: string[];
@@ -876,6 +877,7 @@ export function getAppSettings(): AppSettings {
     larkTopicNativeModeEnabled: values.get("larkTopicNativeModeEnabled") === "true",
     larkOwnerMentionAssistEnabled: values.get("larkOwnerMentionAssistEnabled") === "true",
     larkOwnerMentionAssistOwnerId: values.get("larkOwnerMentionAssistOwnerId") ?? "",
+    larkOwnerMentionAssistBotIds: parseOwnerMentionAssistBotIds(values.get("larkOwnerMentionAssistBotIds")),
     larkGroupSpontaneousReplyRate: Number(values.get("larkGroupSpontaneousReplyRate") ?? config.larkGroupSpontaneousReplyRate),
     larkGroupSpontaneousReplyCooldownMs: Number.isInteger(storedSpontaneousCooldownMs) && storedSpontaneousCooldownMs >= 0 && storedSpontaneousCooldownMs <= 604_800_000 ? storedSpontaneousCooldownMs : 600_000,
     larkGroupSpontaneousChatIds: parseGroupChatIds(values.get("larkGroupSpontaneousChatIds")),
@@ -895,6 +897,15 @@ export function getAppSettings(): AppSettings {
       : config.larkRecentMessageContextMaxChars,
     pollIntervalMs: Number.isFinite(storedPollIntervalMs) && storedPollIntervalMs >= 60000 ? storedPollIntervalMs : config.pollIntervalMs
   };
+}
+
+function parseOwnerMentionAssistBotIds(raw: string | undefined): string[] {
+  try {
+    const values: unknown = JSON.parse(raw ?? "[]");
+    if (!Array.isArray(values) || values.length > 100 || !values.every((id): id is string => typeof id === "string")) return [];
+    const ids = values.map(id => id.trim());
+    return ids.every(id => id.length <= 200 && /^ou_[A-Za-z0-9]+$/.test(id)) ? [...new Set(ids)] : [];
+  } catch { return []; }
 }
 
 function parseApprovalDataSources(raw: string | undefined): string[] {
@@ -958,6 +969,9 @@ export function updateAppSettings(patch: Partial<AppSettings>): AppSettings {
   }
   if (patch.larkOwnerMentionAssistOwnerId !== undefined) {
     write.run("larkOwnerMentionAssistOwnerId", patch.larkOwnerMentionAssistOwnerId, updatedAt);
+  }
+  if (patch.larkOwnerMentionAssistBotIds !== undefined) {
+    write.run("larkOwnerMentionAssistBotIds", JSON.stringify(patch.larkOwnerMentionAssistBotIds), updatedAt);
   }
   if (patch.larkGroupSpontaneousReplyRate !== undefined) {
     write.run("larkGroupSpontaneousReplyRate", String(patch.larkGroupSpontaneousReplyRate), updatedAt);
