@@ -49,7 +49,7 @@ export function SettingsPage() {
   const [pollIntervalMinutes, setPollIntervalMinutes] = useState("10");
   const [larkGroupContextMessageLimit, setLarkGroupContextMessageLimit] = useState("50");
   const [larkGroupContextMaxChars, setLarkGroupContextMaxChars] = useState("6000");
-  const [larkCodexModel, setLarkCodexModel] = useState("gpt-5.6-terra");
+  const [larkCodexModel, setLarkCodexModel] = useState("gpt-6.1-terra");
   const [larkTurnAutoApprovalModel, setLarkTurnAutoApprovalModel] = useState("gpt-6.1-sol");
   const [approvalDataSources, setApprovalDataSources] = useState("");
   const [deploymentAdapterPath, setDeploymentAdapterPath] = useState("");
@@ -104,7 +104,7 @@ export function SettingsPage() {
     setPollIntervalMinutes(String(Math.round(next.pollIntervalMs / 60000)));
     setLarkGroupContextMessageLimit(String(next.appSettings.larkGroupContextMessageLimit));
     setLarkGroupContextMaxChars(String(next.appSettings.larkGroupContextMaxChars));
-    setLarkCodexModel(next.appSettings.larkCodexModel || "gpt-5.6-terra");
+    setLarkCodexModel(next.appSettings.larkCodexModel || "gpt-6.1-terra");
     setLarkTurnAutoApprovalModel(next.appSettings.larkTurnAutoApprovalModel || "gpt-6.1-sol");
     setApprovalDataSources((next.appSettings.larkTurnAutoApprovalDataSources ?? []).join("\n"));
     setDeploymentAdapterPath(next.appSettings.deploymentAdapterPath ?? "");
@@ -744,7 +744,7 @@ export function SettingsPage() {
               {modelCatalog !== null && <button aria-label="刷新模型列表" className="ghostButton" disabled={saving} onClick={() => void refreshModelCatalog()} title="刷新模型列表" type="button"><RefreshCw size={16} /></button>}
             </div>
             {showCustomModelInput && <div className="inlineControl larkModelControl">
-              <input aria-label="自定义模型 ID" id={modelCatalog?.length === 0 ? "larkCodexModel" : undefined} type="text" maxLength={120} disabled={saving} value={larkCodexModel} onChange={(event) => setLarkCodexModel(event.target.value)} placeholder="gpt-5.6-terra" />
+              <input aria-label="自定义模型 ID" id={modelCatalog?.length === 0 ? "larkCodexModel" : undefined} type="text" maxLength={120} disabled={saving} value={larkCodexModel} onChange={(event) => setLarkCodexModel(event.target.value)} placeholder="gpt-6.1-terra" />
               <button type="button" disabled={saving || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(larkCodexModel.trim()) || larkCodexModel.trim() === settings.appSettings.larkCodexModel} onClick={() => void updateSetting({ larkCodexModel: larkCodexModel.trim() })}>保存模型</button>
             </div>}
             {modelCatalogError && <span className="subtle" role="status">模型列表暂不可用，可手动输入模型 ID。</span>}

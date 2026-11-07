@@ -4213,7 +4213,7 @@ test("group allowlist settings sync before persisting and survive backup restora
     assert.deepEqual(calls.at(-1)?.groupSpontaneousChatIds, []);
     assert.equal(getAppSettings().larkGroupSpontaneousReplyRate, 0.08);
     assert.equal(getAppSettings().larkGroupSpontaneousReplyCooldownMs, 600_000);
-    assert.equal(getAppSettings().larkCodexModel, "gpt-5.6-terra");
+    assert.equal(getAppSettings().larkCodexModel, "gpt-6.1-terra");
     assert.equal(getAppSettings().larkCodexReasoningEffort, "low");
     assert.equal(getAppSettings().larkStickerUsageMode, "natural");
     assert.equal(getAppSettings().larkGroupMessageReactionEnabled, false);
