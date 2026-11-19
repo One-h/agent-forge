@@ -299,6 +299,7 @@ export type LarkMessage = {
   event_id: string | null;
   message_id: string | null;
   chat_id: string | null;
+  thread_id?: string | null;
   chat_type: string | null;
   sender_id: string | null;
   sender_name?: string | null;
@@ -393,6 +394,14 @@ export type LarkExecutionConfig = {
 };
 
 export type LarkMessageDetail = LarkMessage & { executionConfigs?: LarkExecutionConfig[] };
+
+export type LarkTopicEngineSelection = { engineId: string; model: string | null };
+export type LarkTopicExecutionSettings = {
+  override: LarkTopicEngineSelection | null;
+  effective: LarkTopicEngineSelection;
+  available: boolean;
+  engines: Array<{ id: string; label: string; models: string[] }>;
+};
 
 export type LarkConversation = {
   chatType?: "group" | "p2p";
@@ -666,6 +675,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+function larkTopicExecutionPath(chatId: string, threadId: string): string {
+  return `/api/lark/chats/${encodeURIComponent(chatId)}/topics/${encodeURIComponent(threadId)}/execution`;
+}
+
 export const api = {
   ownerMentionAssists: () => request<{ items: OwnerMentionAssist[] }>("/api/owner-mention-assists"),
   decideOwnerMentionAssist: (id: number, input: { action: "send" | "dismiss"; text?: string; version: number }) => request<{ item: OwnerMentionAssist }>(`/api/owner-mention-assists/${id}/decision`, {
@@ -753,6 +766,10 @@ export const api = {
   larkCodexSessions: (chatId: string) => request<LarkCodexSessions>(`/api/lark/conversations/${encodeURIComponent(chatId)}/sessions`),
   resetLarkCodexSession: (chatId: string, sessionKey: string, expectedSessionId: string) => request<{ sessionKey: string; oldSessionId: string; resetAt: string }>(`/api/lark/conversations/${encodeURIComponent(chatId)}/sessions/reset`, { method: "POST", body: JSON.stringify({ sessionKey, expectedSessionId }) }),
   larkMessage: (id: number) => request<LarkMessageDetail>(`/api/lark/messages/${id}`),
+  larkTopicExecution: (chatId: string, threadId: string, signal?: AbortSignal) =>
+    request<LarkTopicExecutionSettings>(larkTopicExecutionPath(chatId, threadId), { signal }),
+  updateLarkTopicExecution: (chatId: string, threadId: string, override: LarkTopicEngineSelection | null) =>
+    request<LarkTopicExecutionSettings>(larkTopicExecutionPath(chatId, threadId), { method: "PUT", body: JSON.stringify({ override }) }),
   larkPersona: (chatId: string) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona`),
   saveLarkPersona: (chatId: string, input: PersonaInput) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona`, { method: "PUT", body: JSON.stringify({ mode: input.mode, name: input.name, instructions: input.instructions }) }),
   previewLarkPersona: (chatId: string, input: PersonaInput) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona/preview`, { method: "POST", body: JSON.stringify({ mode: input.mode, name: input.name, instructions: input.instructions }) }),

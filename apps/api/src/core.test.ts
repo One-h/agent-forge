@@ -1161,6 +1161,58 @@ test("conversation model proxy confirms persisted overrides and resets, and reje
   } finally { await app.close(); config.larkAgentUrl = previousUrl; globalThis.fetch = originalFetch; }
 });
 
+test("topic execution settings proxy restricts egress configuration and confirms persisted changes", async () => {
+  const previousUrl = config.larkAgentUrl, previousToken = config.larkAgentToken, originalFetch = globalThis.fetch;
+  config.larkAgentUrl = "http://lark-agent.test";
+  config.larkAgentToken = "fixture-token";
+  type Selection = { engineId: string; model: string | null };
+  const calls: Array<{ url: string; method: string; auth: string | null }> = [];
+  let stored: Selection | null = null, persist = true, unavailable = false;
+  globalThis.fetch = async (url, init) => {
+    const method = init?.method ?? "GET";
+    calls.push({ url: String(url), method, auth: new Headers(init?.headers).get("authorization") });
+    if (method === "PUT" && unavailable) return new Response('{"error":"busy"}', { status: 409 });
+    if (method === "PUT" && persist) stored = JSON.parse(String(init?.body)).override;
+    return new Response(JSON.stringify({
+      override: stored,
+      effective: stored ?? { engineId: "codex", model: "fixture-codex" },
+      available: true,
+      engines: [{ id: "claude", label: "Claude Code", models: ["fixture-model"], unpublishedSecret: "never-forward" }]
+    }));
+  };
+  const app = Fastify({ logger: false });
+  await app.register(issueRoutes);
+  try {
+    const url = "/api/lark/chats/oc_group/topics/omt_topic/execution";
+    const set = (override: Selection | null) => app.inject({ method: "PUT", url, payload: { override } });
+    assert.equal((await app.inject({ url, headers: { origin: "https://unrelated.example" } })).statusCode, 403);
+    assert.equal((await app.inject({ url, headers: { host: "unrelated.example" } })).statusCode, 403);
+    assert.equal((await app.inject({ url, remoteAddress: "192.0.2.10" })).statusCode, 403);
+    assert.equal((await app.inject({ url: url.replace("omt_topic", "wrong%2Ftopic") })).statusCode, 400);
+    assert.equal((await set({ engineId: "codex", model: null })).statusCode, 400);
+    assert.equal((await app.inject({ method: "PUT", url, payload: { override: { engineId: "claude", model: null, launcher: "/bin/sh" } } })).statusCode, 400);
+    assert.equal(calls.length, 0);
+    const initial = await app.inject({ url, headers: { origin: `http://localhost:${config.webPort}` } });
+    assert.equal(initial.statusCode, 200, initial.body);
+    assert.equal(initial.json().effective.engineId, "codex");
+    assert.equal(initial.body.includes("never-forward"), false);
+    const expected = { engineId: "claude", model: "fixture-model" };
+    const saved = await set(expected);
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.deepEqual(saved.json().override, expected);
+    assert.deepEqual(calls.map(call => call.method), ["GET", "PUT", "GET"]);
+    assert.ok(calls.every(call => call.url === "http://lark-agent.test/v1/chats/oc_group/topics/omt_topic/execution" && call.auth === "Bearer fixture-token"));
+    unavailable = true;
+    assert.equal((await set(null)).json().code, "LARK_TOPIC_UNAVAILABLE");
+    unavailable = false; persist = false;
+    assert.equal((await set(null)).json().code, "LARK_TOPIC_WRITE_UNCONFIRMED");
+    persist = true;
+    assert.equal((await set(null)).json().effective.engineId, "codex");
+    config.larkAgentToken = "";
+    assert.equal((await app.inject({ url })).statusCode, 503);
+  } finally { await app.close(); config.larkAgentUrl = previousUrl; config.larkAgentToken = previousToken; globalThis.fetch = originalFetch; }
+});
+
 test("approval history proxy validates filters and forwards authenticated read-only requests", async () => {
   const previousUrl = config.larkAgentUrl;
   const previousToken = config.larkAgentToken;

@@ -1212,6 +1212,13 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
 .conversationSettingSection + .conversationSettingSection { border-top: 1px solid var(--color-border-subtle); padding-top: var(--space-6); }
 .conversationSettingSection > div:first-child p { color: var(--color-text-muted); font-size: var(--text-sm); margin: var(--space-1) 0 0; }
 .conversationSettingSection > small { color: var(--color-text-subtle); }
+.topicExecutionField select { width: 100%; min-width: 0; }
+.topicExecutionMeta dd { min-width: 0; overflow-wrap: anywhere; }
+.conversationSettingSection .topicExecutionHeader { display: flex; align-items: center; flex-wrap: nowrap; }
+.topicExecutionHeader .ghostButton { inline-size: 38px; min-inline-size: 38px; flex: 0 0 38px; padding-inline: 0; }
+@media (max-width: 520px) {
+  .segmentedControl.larkMessageTopicTabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .conversationStickerMode { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: 100%; }
 .conversationStickerMode button { min-width: 0; padding-inline: var(--space-2); }
 .spontaneousMode { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }

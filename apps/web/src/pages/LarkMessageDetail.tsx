@@ -4,6 +4,7 @@ import { api, type LarkMessageArtifacts, type LarkMessageDetail, type LarkMessag
 import { CodexEventTimeline } from "../components/CodexEventTimeline";
 import { DetailDrawer } from "../components/DetailDrawer";
 import { LarkExecutionConfigs } from "../components/LarkExecutionConfigs";
+import { LarkTopicExecutionSettings } from "../components/LarkTopicExecutionSettings";
 import { formatTime, statusText } from "../i18n";
 
 function badgeClass(status: string): string {
@@ -101,7 +102,7 @@ export function LarkMessageDetailDrawer({ messageId, onClose }: { messageId: num
   const [artifacts, setArtifacts] = useState<LarkMessageArtifacts | null>(null);
   const [images, setImages] = useState<LarkMessageImage[] | null>(null);
   const [files, setFiles] = useState<LarkMessageFile[] | null>(null);
-  const [tab, setTab] = useState<"content" | "artifacts" | "media">("content");
+  const [tab, setTab] = useState<"content" | "artifacts" | "media" | "topic">("content");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -185,20 +186,26 @@ export function LarkMessageDetailDrawer({ messageId, onClose }: { messageId: num
     );
   }
 
+  const topic = message.direction === "inbound" && message.chat_type === "group" && message.chat_id && message.thread_id
+    ? { chatId: message.chat_id, threadId: message.thread_id } : null;
+
   return (
     <DetailDrawer
-      kicker="飞书 Codex 会话"
+      kicker={topic ? "飞书话题" : "飞书 Codex 会话"}
       title={`消息 #${message.id}`}
       onClose={onClose}
       actions={<button className="ghostButton" onClick={refresh}><RefreshCw size={16} /> 刷新</button>}
     >
       {error && <div className="error">{error}</div>}
       <div className="drawerStack">
-        {message.direction === "inbound" && <div className="segmentedControl" aria-label="消息详情内容">
+        {message.direction === "inbound" && <div className={`segmentedControl${topic ? " larkMessageTopicTabs" : ""}`} aria-label="消息详情内容">
           <button className={tab === "content" ? "active" : ""} onClick={() => setTab("content")}>消息内容</button>
           <button className={tab === "artifacts" ? "active" : ""} onClick={() => setTab("artifacts")}>执行记录</button>
           <button className={tab === "media" ? "active" : ""} onClick={() => setTab("media")}>图片与附件</button>
+          {topic && <button className={tab === "topic" ? "active" : ""} onClick={() => setTab("topic")}>话题设置</button>}
         </div>}
+
+        {tab === "topic" && topic && <LarkTopicExecutionSettings key={JSON.stringify(topic)} {...topic} />}
 
         {tab === "content" && <>
           <section className="panel">
