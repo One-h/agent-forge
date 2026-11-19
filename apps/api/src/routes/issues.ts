@@ -34,18 +34,21 @@ const repairBodySchema = z.object({
 
 const modelIdSchema = z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/, "请输入有效的模型 ID");
 const topicEngineIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
-const topicEngineSelectionSchema = z.object({ engineId: topicEngineIdSchema, model: modelIdSchema.nullable() }).strict();
-const topicExecutionSchema = z.object({
-  override: topicEngineSelectionSchema.nullable(),
-  effective: topicEngineSelectionSchema,
-  available: z.boolean(),
-  engines: z.array(z.object({ id: topicEngineIdSchema, label: z.string().min(1).max(100), models: z.array(modelIdSchema) }))
-});
+const engineModelIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]{0,119}$/);
+const topicEngineSelectionSchema = z.object({ engineId: topicEngineIdSchema, model: engineModelIdSchema.nullable() }).strict();
 const conversationModelSchema = z.object({ codexModel: z.object({
   override: modelIdSchema.nullable(),
   effectiveModel: modelIdSchema,
   globalModel: modelIdSchema
 }) });
+const larkExecutionSchema = z.object({
+  override: topicEngineSelectionSchema.nullable(),
+  effective: topicEngineSelectionSchema,
+  inherited: topicEngineSelectionSchema.optional(),
+  available: z.boolean(),
+  engines: z.array(z.object({ id: topicEngineIdSchema, label: z.string().min(1).max(100), models: z.array(engineModelIdSchema) })),
+  codexModel: conversationModelSchema.shape.codexModel.optional()
+});
 const deploymentAdapterSchema = z.string().trim().max(4096).refine(value => !value || path.isAbsolute(value), "部署适配脚本必须是绝对路径");
 const approvalHistoryQuerySchema = z.object({
   kind: z.enum(["auto", "manual", "all"]).default("auto"),
@@ -516,44 +519,52 @@ function sendLarkAgentProxyError(reply: FastifyReply, request: FastifyRequest, e
 }
 
 export async function issueRoutes(app: FastifyInstance): Promise<void> {
-  app.route({
+  for (const url of ["/api/lark/chats/:chatId/execution", "/api/lark/chats/:chatId/topics/:threadId/execution"]) app.route({
     method: ["GET", "PUT"],
-    url: "/api/lark/chats/:chatId/topics/:threadId/execution",
+    url,
     async handler(request, reply) {
+      const isTopic = url.includes("/topics/");
+      const scope = isTopic ? "话题" : "会话";
       const origins = [`http://localhost:${config.webPort}`, `http://127.0.0.1:${config.webPort}`];
       const origin = request.headers.origin;
       if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.ip)
         || !["localhost", "127.0.0.1", "::1", "[::1]"].includes(request.hostname)
         || origin && !origins.includes(origin)) {
-        return reply.code(403).send({ code: "LARK_TOPIC_LOCAL_ONLY", message: "话题引擎仅可在本机 Forge 管理。" });
+        return reply.code(403).send({ code: "LARK_TOPIC_LOCAL_ONLY", message: `${scope}引擎仅可在本机 Forge 管理。` });
       }
       const params = z.object({
         chatId: z.string().regex(/^oc_[A-Za-z0-9_-]{1,196}$/),
-        threadId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/)
+        threadId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/).optional()
       }).safeParse(request.params);
       if (!params.success) return reply.code(400).send(errorResponse(apiErrorCodes.VALIDATION_FAILED, request));
       if (!config.larkAgentUrl || !config.larkAgentToken) return reply.code(503).send({ code: "LARK_TOPIC_NOT_CONFIGURED", message: "Forge 尚未配置独立 Lark Agent 或运行时令牌。" });
       const { chatId, threadId } = params.data;
-      const target = `/v1/chats/${encodeURIComponent(chatId)}/topics/${encodeURIComponent(threadId)}/execution`;
+      const target = `/v1/chats/${encodeURIComponent(chatId)}${threadId ? `/topics/${encodeURIComponent(threadId)}` : ""}/execution`;
       try {
-        if (request.method === "GET") return topicExecutionSchema.parse(await larkAgentProxyFetch(target));
+        if (request.method === "GET") return larkExecutionSchema.parse(await larkAgentProxyFetch(target));
         const input = z.object({ override: topicEngineSelectionSchema.nullable() }).strict().safeParse(request.body);
-        if (!input.success || input.data.override?.engineId === "codex") return reply.code(400).send(errorResponse(apiErrorCodes.VALIDATION_FAILED, request));
+        if (!input.success || (input.data.override?.engineId === "codex" && input.data.override.model !== null
+          && (isTopic || !modelIdSchema.safeParse(input.data.override.model).success))) {
+          return reply.code(400).send(errorResponse(apiErrorCodes.VALIDATION_FAILED, request));
+        }
+        const requested = input.data.override;
+        const expected = !isTopic && requested?.engineId === "codex" && requested.model === null ? null : requested;
         await larkAgentProxyFetch(target, {
-          method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(input.data)
+          method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ override: expected })
         });
-        const verified = topicExecutionSchema.parse(await larkAgentProxyFetch(target));
-        const expected = input.data.override;
+        const verified = larkExecutionSchema.parse(await larkAgentProxyFetch(target));
+        const effective = expected ?? (isTopic ? verified.inherited : null);
         if (expected?.engineId !== verified.override?.engineId || expected?.model !== verified.override?.model ||
-          (expected && (!verified.available || verified.effective.engineId !== expected.engineId || verified.effective.model !== expected.model)) ||
-          (!expected && verified.effective.engineId !== "codex")) {
-          return reply.code(502).send({ code: "LARK_TOPIC_WRITE_UNCONFIRMED", message: "未能确认话题设置已生效，请刷新后核对。" });
+          (expected && !verified.available) ||
+          verified.effective.engineId !== (effective?.engineId ?? "codex") ||
+          (effective && !(expected?.engineId === "codex" && expected.model === null) && verified.effective.model !== effective.model)) {
+          return reply.code(502).send({ code: "LARK_TOPIC_WRITE_UNCONFIRMED", message: `未能确认${scope}设置已生效，请刷新后核对。` });
         }
         return verified;
       } catch (error) {
         if (error instanceof LarkAgentResponseError) {
-          if (error.statusCode === 404) return reply.code(404).send({ code: "LARK_TOPIC_NOT_FOUND", message: "当前 Lark Agent 版本不支持话题引擎设置，或该话题不存在。" });
-          if (error.statusCode === 409) return reply.code(409).send({ code: "LARK_TOPIC_UNAVAILABLE", message: "话题仍有排队或运行任务，或所选引擎、模型已不可用。请刷新后重试。" });
+          if (error.statusCode === 404) return reply.code(404).send({ code: "LARK_TOPIC_NOT_FOUND", message: `当前 Lark Agent 版本不支持${scope}引擎设置，或该${scope}不存在。` });
+          if (error.statusCode === 409) return reply.code(409).send({ code: "LARK_TOPIC_UNAVAILABLE", message: `${scope}仍有排队或运行任务，或所选引擎、模型已不可用。请刷新后重试。` });
         }
         return sendLarkAgentProxyError(reply, request, error);
       }

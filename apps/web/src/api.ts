@@ -399,8 +399,10 @@ export type LarkTopicEngineSelection = { engineId: string; model: string | null 
 export type LarkTopicExecutionSettings = {
   override: LarkTopicEngineSelection | null;
   effective: LarkTopicEngineSelection;
+  inherited?: LarkTopicEngineSelection;
   available: boolean;
   engines: Array<{ id: string; label: string; models: string[] }>;
+  codexModel?: { override: string | null; effectiveModel: string; globalModel: string };
 };
 
 export type LarkConversation = {
@@ -675,8 +677,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function larkTopicExecutionPath(chatId: string, threadId: string): string {
-  return `/api/lark/chats/${encodeURIComponent(chatId)}/topics/${encodeURIComponent(threadId)}/execution`;
+function larkExecutionPath(chatId: string, threadId?: string): string {
+  const chat = `/api/lark/chats/${encodeURIComponent(chatId)}`;
+  return `${chat}${threadId ? `/topics/${encodeURIComponent(threadId)}` : ""}/execution`;
 }
 
 export const api = {
@@ -766,10 +769,10 @@ export const api = {
   larkCodexSessions: (chatId: string) => request<LarkCodexSessions>(`/api/lark/conversations/${encodeURIComponent(chatId)}/sessions`),
   resetLarkCodexSession: (chatId: string, sessionKey: string, expectedSessionId: string) => request<{ sessionKey: string; oldSessionId: string; resetAt: string }>(`/api/lark/conversations/${encodeURIComponent(chatId)}/sessions/reset`, { method: "POST", body: JSON.stringify({ sessionKey, expectedSessionId }) }),
   larkMessage: (id: number) => request<LarkMessageDetail>(`/api/lark/messages/${id}`),
-  larkTopicExecution: (chatId: string, threadId: string, signal?: AbortSignal) =>
-    request<LarkTopicExecutionSettings>(larkTopicExecutionPath(chatId, threadId), { signal }),
-  updateLarkTopicExecution: (chatId: string, threadId: string, override: LarkTopicEngineSelection | null) =>
-    request<LarkTopicExecutionSettings>(larkTopicExecutionPath(chatId, threadId), { method: "PUT", body: JSON.stringify({ override }) }),
+  larkExecution: (chatId: string, threadId: string | undefined, signal?: AbortSignal) =>
+    request<LarkTopicExecutionSettings>(larkExecutionPath(chatId, threadId), { signal }),
+  updateLarkExecution: (chatId: string, threadId: string | undefined, override: LarkTopicEngineSelection | null) =>
+    request<LarkTopicExecutionSettings>(larkExecutionPath(chatId, threadId), { method: "PUT", body: JSON.stringify({ override }) }),
   larkPersona: (chatId: string) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona`),
   saveLarkPersona: (chatId: string, input: PersonaInput) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona`, { method: "PUT", body: JSON.stringify({ mode: input.mode, name: input.name, instructions: input.instructions }) }),
   previewLarkPersona: (chatId: string, input: PersonaInput) => request<ConversationStyle>(`/api/lark/chats/${encodeURIComponent(chatId)}/persona/preview`, { method: "POST", body: JSON.stringify({ mode: input.mode, name: input.name, instructions: input.instructions }) }),

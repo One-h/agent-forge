@@ -19,9 +19,13 @@ const output = await build({
     import { createRoot } from "react-dom/client";
     import { BrowserRouter } from "react-router-dom";
     import { LarkMessageDetailDrawer } from "./src/pages/LarkMessageDetail";
+    import { LarkPersonaDrawer } from "./src/pages/LarkPersonaDrawer";
     import "./src/styles.css";
     const id = Number(new URLSearchParams(location.search).get("message") ?? 7);
-    createRoot(document.getElementById("root")).render(<BrowserRouter><main className="workspace"><LarkMessageDetailDrawer messageId={id} onClose={() => {}} /></main></BrowserRouter>);
+    const settings = new URLSearchParams(location.search).get("settings");
+    createRoot(document.getElementById("root")).render(<BrowserRouter><main className="workspace">{settings
+      ? <LarkPersonaDrawer chatId={settings === "group" ? "oc_group" : "oc_direct"} chatType={settings} title="Fixture" onClose={() => {}} />
+      : <LarkMessageDetailDrawer messageId={id} onClose={() => {}} />}</main></BrowserRouter>);
   `, resolveDir: webRoot, loader: "tsx" },
   bundle: true, write: false, outfile: "fixture.js", jsx: "automatic", format: "esm",
   define: { "process.env.NODE_ENV": '"production"' }
@@ -50,7 +54,8 @@ try {
     page.setDefaultTimeout(8000);
     const errors = [], writes = [];
     page.on("pageerror", error => errors.push(error.message));
-    let override = null, busy = false, registered = false;
+    let override = null, busy = false, registered = false, legacyAgent = false, legacyModel = null;
+    const conversation = new Map();
     await context.route("**/*", async route => {
       const request = route.request(), url = new URL(request.url());
       if (url.origin !== origin) return route.abort();
@@ -70,6 +75,29 @@ try {
         return route.fulfill({ json: { override, effective: override ?? { engineId: "codex", model: "fixture-codex" },
           available: true, engines: registered ? [{ id: "claude", label: "Claude Code", models: ["fixture-claude"] }] : [] } });
       }
+      const chatSetting = /^\/api\/lark\/chats\/(oc_group|oc_direct)\/(persona|settings|execution)$/.exec(url.pathname);
+      if (chatSetting) {
+        const [, chat, resource] = chatSetting;
+        if (resource === "persona") return route.fulfill({ json: { persona: { mode: "default", name: "", instructions: "", version: 0, updatedAt: null } } });
+        if (resource === "settings") {
+          if (request.method() === "PATCH") legacyModel = request.postDataJSON().codexModel;
+          return route.fulfill({ json: {
+          codexModel: { override: legacyModel, effectiveModel: legacyModel ?? "fixture-codex", globalModel: "fixture-codex" },
+          stickerUsage: { mode: "global", effectiveMode: "natural", globalMode: "natural" },
+          spontaneousReply: { mode: "global", globalReplyRate: 0.08, globalCooldownMs: 600000, effectiveEnabled: false }
+          } });
+        }
+        if (legacyAgent) return route.fulfill({ status: 404, json: { message: "Unknown execution route" } });
+        if (request.method() === "PUT") conversation.set(chat, request.postDataJSON().override);
+        const selection = conversation.get(chat) ?? null;
+        const codexOverride = selection?.engineId === "codex" ? selection.model : null;
+        return route.fulfill({ json: { override: selection, effective: selection ?? { engineId: "codex", model: "fixture-codex" },
+          available: true, engines: [{ id: "claude", label: "Claude Code", models: ["fixture-claude"] }, { id: "other", label: "Other Engine", models: [] }],
+          codexModel: { override: codexOverride, effectiveModel: codexOverride ?? "fixture-codex", globalModel: "fixture-codex" }
+        } });
+      }
+      if (/^\/api\/lark\/conversations\/(oc_group|oc_direct)\/sessions$/.test(url.pathname)) return route.fulfill({ json: { active: [], previous: [] } });
+      if (url.pathname === "/api/lark/models") return route.fulfill({ json: { models: [{ id: "fixture-codex", displayName: "Fixture" }] } });
       errors.push(`Unmocked path: ${url.pathname}`);
       return route.fulfill({ status: 500, body: "Unmocked API" });
     });
@@ -107,6 +135,37 @@ try {
     await page.goto(`${origin}/?message=8`);
     await expect(page.getByText("消息 #8", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "话题设置" })).toHaveCount(0);
+    const conversationPanel = page.getByRole("region", { name: "会话执行设置" });
+    const engine = conversationPanel.getByLabel("执行引擎");
+    const model = conversationPanel.getByLabel("模型", { exact: true });
+    const save = conversationPanel.getByRole("button", { name: "保存执行设置" });
+    await page.goto(`${origin}/?settings=group`);
+    await expect(conversationPanel.getByText("Codex · fixture-codex")).toBeVisible();
+    await engine.selectOption("claude");
+    await model.selectOption("fixture-claude");
+    await save.click();
+    await expect(conversationPanel.getByText("Claude Code · fixture-claude")).toBeVisible();
+    await page.screenshot({ path: path.join(reportDir, `group-execution-${width}.png`) });
+    assert.equal(await conversationPanel.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+    await page.goto(`${origin}/?settings=p2p`);
+    await expect(conversationPanel.getByText("Codex · fixture-codex")).toBeVisible();
+    await model.fill("custom-codex");
+    await save.click();
+    await expect(conversationPanel.getByText("Codex · custom-codex")).toBeVisible();
+    await engine.selectOption("other");
+    await save.click();
+    await expect(conversationPanel.getByText("Other Engine · 默认模型")).toBeVisible();
+    await page.screenshot({ path: path.join(reportDir, `direct-execution-${width}.png`) });
+    assert.equal(await conversationPanel.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+    assert.deepEqual(conversation.get("oc_group"), { engineId: "claude", model: "fixture-claude" });
+    assert.deepEqual(conversation.get("oc_direct"), { engineId: "other", model: null });
+    legacyAgent = true;
+    await page.reload();
+    await expect(conversationPanel.getByText("Codex · fixture-codex")).toBeVisible();
+    await model.fill("legacy-codex");
+    await save.click();
+    await expect(conversationPanel.getByText("Codex · legacy-codex")).toBeVisible();
+    assert.equal(legacyModel, "legacy-codex");
     assert.deepEqual(errors, []);
     await context.close();
   }

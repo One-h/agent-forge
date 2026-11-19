@@ -1189,7 +1189,7 @@ test("topic execution settings proxy restricts egress configuration and confirms
     assert.equal((await app.inject({ url, headers: { host: "unrelated.example" } })).statusCode, 403);
     assert.equal((await app.inject({ url, remoteAddress: "192.0.2.10" })).statusCode, 403);
     assert.equal((await app.inject({ url: url.replace("omt_topic", "wrong%2Ftopic") })).statusCode, 400);
-    assert.equal((await set({ engineId: "codex", model: null })).statusCode, 400);
+    assert.equal((await set({ engineId: "codex", model: "unsupported-topic-model" })).statusCode, 400);
     assert.equal((await app.inject({ method: "PUT", url, payload: { override: { engineId: "claude", model: null, launcher: "/bin/sh" } } })).statusCode, 400);
     assert.equal(calls.length, 0);
     const initial = await app.inject({ url, headers: { origin: `http://localhost:${config.webPort}` } });
@@ -1210,6 +1210,44 @@ test("topic execution settings proxy restricts egress configuration and confirms
     assert.equal((await set(null)).json().effective.engineId, "codex");
     config.larkAgentToken = "";
     assert.equal((await app.inject({ url })).statusCode, 503);
+  } finally { await app.close(); config.larkAgentUrl = previousUrl; config.larkAgentToken = previousToken; globalThis.fetch = originalFetch; }
+});
+
+test("conversation execution proxy saves independent group and direct settings and verifies topic inheritance", async () => {
+  const previousUrl = config.larkAgentUrl, previousToken = config.larkAgentToken, originalFetch = globalThis.fetch;
+  config.larkAgentUrl = "http://lark-agent.test";
+  config.larkAgentToken = "fixture-token";
+  type Selection = { engineId: string; model: string | null };
+  const selections = new Map<string, Selection | null>();
+  const fallback = { engineId: "codex", model: "global-model" };
+  globalThis.fetch = async (url, init) => {
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-token");
+    const key = new URL(String(url)).pathname;
+    if (init?.method === "PUT") selections.set(key, JSON.parse(String(init.body)).override);
+    const override = selections.get(key) ?? null;
+    const inherited = key.includes("/topics/") ? selections.get(key.replace(/\/topics\/[^/]+/, "")) ?? fallback : undefined;
+    return Response.json({
+      override, inherited,
+      effective: override?.engineId === "codex" && override.model === null ? fallback : override ?? inherited ?? fallback,
+      available: true, engines: [{ id: "claude", label: "Claude Code", models: ["fixture-model"] }],
+      codexModel: { override: null, effectiveModel: "global-model", globalModel: "global-model" }
+    });
+  };
+  const app = Fastify({ logger: false });
+  await app.register(issueRoutes);
+  try {
+    const group = "/api/lark/chats/oc_group/execution";
+    const direct = "/api/lark/chats/oc_direct/execution";
+    const topic = "/api/lark/chats/oc_group/topics/omt_topic/execution";
+    const write = (url: string, override: Selection | null) => app.inject({ method: "PUT", url, payload: { override } });
+    assert.equal((await app.inject({ url: direct, headers: { origin: "https://unrelated.example" } })).statusCode, 403);
+    assert.equal((await app.inject({ url: direct })).json().effective.engineId, "codex");
+    assert.equal((await write(group, { engineId: "claude", model: "fixture-model" })).json().effective.engineId, "claude");
+    assert.equal((await write(direct, { engineId: "codex", model: "other-codex" })).json().effective.model, "other-codex");
+    assert.equal((await write(topic, { engineId: "codex", model: null })).json().effective.engineId, "codex");
+    assert.equal((await write(topic, null)).json().effective.engineId, "claude");
+    assert.equal((await write(direct, { engineId: "codex", model: null })).json().effective.model, "global-model");
+    assert.equal((await app.inject({ url: group })).json().effective.engineId, "claude");
   } finally { await app.close(); config.larkAgentUrl = previousUrl; config.larkAgentToken = previousToken; globalThis.fetch = originalFetch; }
 });
 
