@@ -499,6 +499,13 @@ function errorResponse(definition: { code: string; message: string }, request: F
   return { ...definition, traceId: request.id };
 }
 
+function isLocalForgeRequest(request: FastifyRequest): boolean {
+  const origin = request.headers.origin;
+  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.ip)
+    && ["localhost", "127.0.0.1", "::1", "[::1]"].includes(request.hostname)
+    && (!origin || [`http://localhost:${config.webPort}`, `http://127.0.0.1:${config.webPort}`].includes(origin));
+}
+
 function sendLarkAgentProxyError(reply: FastifyReply, request: FastifyRequest, error: unknown) {
   if (error instanceof LarkAgentResponseError) {
     const body = error.responseBody;
@@ -518,18 +525,62 @@ function sendLarkAgentProxyError(reply: FastifyReply, request: FastifyRequest, e
   return reply.code(502).send(errorResponse(apiErrorCodes.LARK_AGENT_UNAVAILABLE, request));
 }
 
+const managedChatText = z.string().refine(value => value.trim().length > 0);
+const managedChatPersonaSchema = z.object({
+  mode: z.literal("custom"), name: managedChatText, instructions: managedChatText
+}).strict();
+const managedChatExecutionSchema = z.object({ engineId: managedChatText, model: managedChatText }).strict();
+const createManagedChatSchema = z.object({
+  requestId: z.string().uuid().transform(value => value.toLowerCase()), name: managedChatText,
+  persona: managedChatPersonaSchema.optional(), execution: managedChatExecutionSchema.optional()
+}).strict();
+const managedChatItemSchema = z.object({
+  requestId: z.string().uuid(), name: z.string(), chatId: z.string().nullable(),
+  openUrl: z.string().nullable(), createdAt: z.string(), status: z.enum(["creating", "ready", "attention"]),
+  error: z.string().nullable(), persona: managedChatPersonaSchema.nullable(), execution: managedChatExecutionSchema.nullable()
+});
+const managedChatsSchema = z.object({
+  items: z.array(managedChatItemSchema),
+  engines: z.array(z.object({ id: z.string(), label: z.string(), models: z.array(z.string()) }))
+});
+const managedChatResultSchema = z.object({ item: managedChatItemSchema });
+
 export async function issueRoutes(app: FastifyInstance): Promise<void> {
+  app.route({
+    method: ["GET", "POST"],
+    url: "/api/lark/managed-chats",
+    async handler(request, reply) {
+      if (!isLocalForgeRequest(request)) {
+        return reply.code(403).send(errorResponse({ code: "LARK_MANAGED_CHATS_LOCAL_ONLY", message: "飞书群聊仅可在本机 Forge 管理。" }, request));
+      }
+      if (!config.larkAgentUrl || !config.larkAgentToken) {
+        return reply.code(503).send(errorResponse(apiErrorCodes.LARK_AGENT_NOT_CONFIGURED, request));
+      }
+      const creating = request.method === "POST";
+      const input = creating ? createManagedChatSchema.safeParse(request.body) : null;
+      if (input && !input.success) return reply.code(400).send(errorResponse(apiErrorCodes.VALIDATION_FAILED, request));
+      try {
+        const upstream = await larkAgentProxyFetch("/v1/managed-chats", {
+          method: request.method,
+          redirect: "error",
+          signal: AbortSignal.timeout(30_000),
+          ...(input ? { headers: { "content-type": "application/json" }, body: JSON.stringify(input.data) } : {})
+        });
+        const result = creating ? managedChatResultSchema.safeParse(upstream) : managedChatsSchema.safeParse(upstream);
+        if (!result.success || (input && (!("item" in result.data) || result.data.item.requestId !== input.data.requestId))) {
+          return reply.code(502).send(errorResponse(apiErrorCodes.LARK_AGENT_UPSTREAM_FAILED, request));
+        }
+        return result.data;
+      } catch (error) { return sendLarkAgentProxyError(reply, request, error); }
+    }
+  });
   for (const url of ["/api/lark/chats/:chatId/execution", "/api/lark/chats/:chatId/topics/:threadId/execution"]) app.route({
     method: ["GET", "PUT"],
     url,
     async handler(request, reply) {
       const isTopic = url.includes("/topics/");
       const scope = isTopic ? "话题" : "会话";
-      const origins = [`http://localhost:${config.webPort}`, `http://127.0.0.1:${config.webPort}`];
-      const origin = request.headers.origin;
-      if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.ip)
-        || !["localhost", "127.0.0.1", "::1", "[::1]"].includes(request.hostname)
-        || origin && !origins.includes(origin)) {
+      if (!isLocalForgeRequest(request)) {
         return reply.code(403).send({ code: "LARK_TOPIC_LOCAL_ONLY", message: `${scope}引擎仅可在本机 Forge 管理。` });
       }
       const params = z.object({

@@ -1,0 +1,49 @@
+.managedChatsPage { max-width: 1024px; }
+.managedChatsHeader h2 { margin: 0; }
+.managedChatComposer { max-width: 720px; }
+.managedChatComposer .managedChatMembers,
+.managedChatHistory > p { margin: 0; }
+.managedChatForm { display: grid; gap: var(--space-4); min-width: 0; }
+.managedChatForm fieldset {
+  border: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+.managedChatForm .personaField :is(input, select, textarea) {
+  background: var(--color-bg-inset);
+  font-size: var(--text-md);
+  line-height: inherit;
+  min-height: 38px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  width: 100%;
+}
+.managedChatForm .personaField textarea { min-height: 100px; }
+.managedChatPersonaToggle { display: flex; align-items: center; gap: var(--space-2); width: fit-content; }
+.managedChatFullWidth { grid-column: 1 / -1; }
+.managedChatActions, .managedChatMeta, .managedChatTitle { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.managedChatActions { min-height: 38px; }
+.managedChatsPage :is(p, .error, .subtle, strong) { overflow-wrap: anywhere; }
+.managedChatHistory .iconButton { flex: none; }
+.managedChatList { list-style: none; margin: 0; padding: 0; }
+.managedChatRow {
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-4) 0;
+}
+.managedChatSummary { display: grid; gap: var(--space-2); min-width: 0; }
+.managedChatTitle .badge { flex: none; }
+.managedChatWarning { color: var(--color-danger); font-size: var(--text-sm); margin: 0; }
+.managedChatOpen { align-items: center; display: inline-flex; flex: none; gap: var(--space-2); font-size: var(--text-sm); }
+.managedChatOpen:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .managedChatForm fieldset { grid-template-columns: minmax(0, 1fr); }
+  .managedChatRow { align-items: flex-start; flex-direction: column; }
+}

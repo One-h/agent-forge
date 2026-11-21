@@ -2,12 +2,13 @@ import { GroupPrivacyPage } from "./pages/GroupPrivacy";
 import { AgentMessagingPage } from "./pages/AgentMessaging";
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { Activity, Bell, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings2, ShieldCheck, Sun, WandSparkles } from "lucide-react";
+import { Activity, Bell, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings2, ShieldCheck, Sun, Users, WandSparkles } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { IssueDetailDrawer } from "./components/IssueDetailDrawer";
 import { Dashboard } from "./pages/Dashboard";
 import { IssueList } from "./pages/IssueList";
 import { LarkMessageList } from "./pages/LarkMessageList";
+import { LarkManagedChatsPage } from "./pages/LarkManagedChats";
 import { PersonalInboxPage } from "./pages/PersonalInbox";
 import { NotificationList } from "./pages/NotificationList";
 import { PullRequestList } from "./pages/PullRequestList";
@@ -87,6 +88,7 @@ export function App() {
     { to: "/notifications", label: "通知", icon: Bell },
     { to: "/todos", label: "待办", icon: ListTodo },
     { to: "/lark-messages", label: "飞书消息", icon: MessageSquareText },
+    { to: "/lark-managed-chats", label: "飞书群聊", icon: Users },
     { to: "/group-privacy", label: "群聊隐私审批", icon: Inbox },
     { to: "/agent-messaging", label: "Agent 消息路由", icon: Inbox },
     { to: "/personal-inbox", label: "个人收件箱", icon: Inbox },
@@ -191,6 +193,7 @@ export function App() {
           />
           <Route path="/todos" element={<TodoList />} />
           <Route path="/lark-messages" element={<LarkMessageList />} />
+          <Route path="/lark-managed-chats" element={<LarkManagedChatsPage />} />
           <Route path="/group-privacy" element={<GroupPrivacyPage />} />
           <Route path="/agent-messaging" element={<AgentMessagingPage />} />
           <Route path="/personal-inbox" element={<PersonalInboxPage />} />

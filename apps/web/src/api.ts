@@ -405,6 +405,26 @@ export type LarkTopicExecutionSettings = {
   codexModel?: { override: string | null; effectiveModel: string; globalModel: string };
 };
 
+export type LarkManagedChatInput = {
+  requestId: string;
+  name: string;
+  persona?: { mode: "custom"; name: string; instructions: string };
+  execution?: { engineId: string; model: string };
+};
+export type LarkManagedChat = Pick<LarkManagedChatInput, "requestId" | "name"> & {
+  chatId: string | null;
+  openUrl: string | null;
+  createdAt: string;
+  status: "creating" | "ready" | "attention";
+  error: string | null;
+  persona: NonNullable<LarkManagedChatInput["persona"]> | null;
+  execution: NonNullable<LarkManagedChatInput["execution"]> | null;
+};
+export type LarkManagedChats = {
+  items: LarkManagedChat[];
+  engines: Array<{ id: string; label: string; models: string[] }>;
+};
+
 export type LarkConversation = {
   chatType?: "group" | "p2p";
   chatId?: string | null;
@@ -683,6 +703,10 @@ function larkExecutionPath(chatId: string, threadId?: string): string {
 }
 
 export const api = {
+  larkManagedChats: (signal?: AbortSignal) => request<LarkManagedChats>("/api/lark/managed-chats", { signal }),
+  createLarkManagedChat: (input: LarkManagedChatInput) => request<{ item: LarkManagedChat }>("/api/lark/managed-chats", {
+    method: "POST", body: JSON.stringify(input)
+  }),
   ownerMentionAssists: () => request<{ items: OwnerMentionAssist[] }>("/api/owner-mention-assists"),
   decideOwnerMentionAssist: (id: number, input: { action: "send" | "dismiss"; text?: string; version: number }) => request<{ item: OwnerMentionAssist }>(`/api/owner-mention-assists/${id}/decision`, {
     method: "POST", body: JSON.stringify({ action: input.action, ...(input.text !== undefined ? { text: input.text } : {}), version: input.version })
