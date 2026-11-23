@@ -529,7 +529,7 @@ const managedChatText = z.string().refine(value => value.trim().length > 0);
 const managedChatPersonaSchema = z.object({
   mode: z.literal("custom"), name: managedChatText, instructions: managedChatText
 }).strict();
-const managedChatExecutionSchema = z.object({ engineId: managedChatText, model: managedChatText }).strict();
+const managedChatExecutionSchema = z.object({ engineId: managedChatText, model: managedChatText.nullable() }).strict();
 const createManagedChatSchema = z.object({
   requestId: z.string().uuid().transform(value => value.toLowerCase()), name: managedChatText,
   persona: managedChatPersonaSchema.optional(), execution: managedChatExecutionSchema.optional()

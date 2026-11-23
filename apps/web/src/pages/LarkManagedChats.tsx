@@ -33,7 +33,7 @@ function ChatRow({ item, engines }: { item: LarkManagedChat; engines: LarkManage
       <div className="managedChatMeta subtle">
         {Number.isFinite(date.getTime()) && <time dateTime={item.createdAt}>{date.toLocaleString()}</time>}
         <span>{item.persona?.name ?? "默认人设"}</span>
-        <span>{execution ? `${engineLabel} · ${execution.model}` : "默认模型"}</span>
+        <span>{execution ? `${engineLabel} · ${execution.model ?? "默认模型"}` : "默认引擎与模型"}</span>
       </div>
       {item.error && <p className="managedChatWarning">{item.error}</p>}
     </div>
@@ -44,6 +44,7 @@ function ChatRow({ item, engines }: { item: LarkManagedChat; engines: LarkManage
 }
 
 export function LarkManagedChatsPage() {
+  const engineLabelId = useId();
   const modelLabelId = useId();
   const [snapshot, setSnapshot] = useState<LarkManagedChats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +54,7 @@ export function LarkManagedChatsPage() {
   const [customPersona, setCustomPersona] = useState(false);
   const [personaName, setPersonaName] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [engineId, setEngineId] = useState("");
   const [model, setModel] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -67,6 +69,7 @@ export function LarkManagedChatsPage() {
     setCustomPersona(false);
     setPersonaName("");
     setInstructions("");
+    setEngineId("");
     setModel("");
     setCreateError("");
     setCanEdit(false);
@@ -95,10 +98,10 @@ export function LarkManagedChatsPage() {
   }
 
   const engines = snapshot?.engines ?? [];
-  const selection = engines.flatMap(engine => engine.models.map(value => ({ engineId: engine.id, model: value })))
-    .find(value => JSON.stringify([value.engineId, value.model]) === model);
+  const engine = engines.find(entry => entry.id === engineId);
+  const validModel = !model || Boolean(engine?.models.includes(model));
   const valid = Boolean(name.trim() && [...name.trim()].length <= 60
-    && (!customPersona || personaName.trim() && instructions.trim()) && (!model || selection));
+    && (!customPersona || personaName.trim() && instructions.trim()) && (!engineId || engine && validModel));
   const retrying = Boolean(createError);
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -107,7 +110,7 @@ export function LarkManagedChatsPage() {
     const input: LarkManagedChatInput = attempt.current ?? {
       requestId: crypto.randomUUID(), name: name.trim(),
       ...(customPersona ? { persona: { mode: "custom", name: personaName.trim(), instructions: instructions.trim() } } : {}),
-      ...(selection ? { execution: selection } : {})
+      ...(engine ? { execution: { engineId: engine.id, model: model || null } } : {})
     };
     attempt.current = input;
     inFlight.current = true;
@@ -140,16 +143,21 @@ export function LarkManagedChatsPage() {
       <p className="subtle managedChatMembers">成员：你和已连接的飞书机器人</p>
       <form className="managedChatForm" onSubmit={event => void create(event)}>
         <fieldset disabled={creating || retrying || !snapshot}>
-          <label className="personaField"><span>群名称</span>
+          <label className="personaField managedChatFullWidth"><span>群名称</span>
             <input required maxLength={60} value={name} onChange={event => setName(event.target.value)} />
           </label>
+          <label className="personaField"><span id={engineLabelId}>运行引擎</span>
+            <select aria-labelledby={engineLabelId} value={engineId} onChange={event => { setEngineId(event.target.value); setModel(""); }}>
+              <option value="">使用默认引擎</option>
+              {engineId && !engine && <option value={engineId} disabled>{engineId}（不可用）</option>}
+              {engines.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+            </select>
+          </label>
           <label className="personaField"><span id={modelLabelId}>模型</span>
-            <select aria-labelledby={modelLabelId} value={model} onChange={event => setModel(event.target.value)}>
-              <option value="">使用默认模型</option>
-              {model && !selection && <option value={model} disabled>所选模型不可用</option>}
-              {engines.filter(engine => engine.models.length).map(engine => <optgroup key={engine.id} label={engine.label}>
-                {engine.models.map(value => <option key={value} value={JSON.stringify([engine.id, value])}>{value}</option>)}
-              </optgroup>)}
+            <select aria-labelledby={modelLabelId} value={model} disabled={!engine?.models.length} onChange={event => setModel(event.target.value)}>
+              <option value="">{engine ? "引擎默认模型" : "使用默认模型"}</option>
+              {model && !validModel && <option value={model} disabled>{model}（不可用）</option>}
+              {engine?.models.map(value => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
           <label className="managedChatPersonaToggle">

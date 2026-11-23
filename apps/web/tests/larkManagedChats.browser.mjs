@@ -31,7 +31,8 @@ const server = createServer((req, res) => {
   } else res.writeHead(404).end();
 });
 
-const catalog = [{ id: "codex", label: "Codex", models: ["fixture-codex"] }, { id: "claude", label: "Claude Code", models: ["fixture-claude"] }];
+const catalog = [{ id: "codex", label: "Codex", models: ["fixture-codex"] }, { id: "claude", label: "Claude Code", models: ["fixture-claude"] },
+  { id: "dsh", label: "DSH", models: [] }];
 const appLink = "https://applink.feishu.cn/client/chat/open?openChatId=";
 const row = (input, fields) => ({ ...input, chatId: null, openUrl: null, createdAt: "2026-11-21T00:00:00.000Z",
   status: "creating", error: null, persona: input.persona ?? null, execution: input.execution ?? null, ...fields });
@@ -77,6 +78,11 @@ try {
         items.push(item);
         return route.fulfill({ json: { item } });
       }
+      if (writes.length === 4) {
+        const item = row(input, { chatId: "oc_enginedefault", status: "ready" });
+        items.unshift(item);
+        return route.fulfill({ json: { item } });
+      }
       items.unshift(row(input, { chatId: "oc_custom", openUrl: `${appLink}oc_custom`, status: "attention", error: "请核对群设置" }),
         row({ requestId: "ef49fd2f-d9eb-4256-8522-ec76d2216ce1", name: "备用群" }, { openUrl: "https://untrusted.test" }));
       return route.abort("timedout");
@@ -106,6 +112,8 @@ try {
     assert.deepEqual(writes[1], writes[0]);
 
     await composer.getByLabel("群名称").fill("自定义测试群");
+    const engine = composer.getByLabel("运行引擎", { exact: true });
+    await engine.selectOption("claude");
     await composer.getByLabel("模型", { exact: true }).selectOption({ label: "fixture-claude" });
     await composer.getByRole("checkbox", { name: "自定义人设" }).check();
     await composer.getByLabel("人设名称").fill("审查员");
@@ -122,7 +130,19 @@ try {
     assert.deepEqual(writes[2], { requestId: writes[2].requestId, name: "自定义测试群",
       persona: { mode: "custom", name: "审查员", instructions: "复核指定内容。" }, execution: { engineId: "claude", model: "fixture-claude" } });
     assert.notEqual(writes[2].requestId, writes[0].requestId);
-    assert.equal(writes.length, 3);
+
+    await composer.getByLabel("群名称").fill("默认模型测试群");
+    const model = composer.getByLabel("模型", { exact: true });
+    await engine.selectOption("codex");
+    await model.selectOption("fixture-codex");
+    await engine.selectOption("dsh");
+    await expect(model).toHaveValue("");
+    await expect(model).toBeDisabled();
+    await expect(model.locator("option:checked")).toHaveText("引擎默认模型");
+    await composer.getByRole("button", { name: "创建私有群" }).click();
+    await expect(history.getByText("DSH · 默认模型", { exact: true })).toBeVisible();
+    assert.deepEqual(writes[3], { requestId: writes[3].requestId, name: "默认模型测试群", execution: { engineId: "dsh", model: null } });
+    assert.equal(writes.length, 4);
     await composer.getByRole("checkbox", { name: "自定义人设" }).check();
     assert.equal(await page.locator(".managedChatsPage").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
     await page.screenshot({ path: path.join(reportDir, `managed-chats-${width}.png`), fullPage: true });

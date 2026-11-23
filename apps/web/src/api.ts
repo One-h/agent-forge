@@ -409,7 +409,7 @@ export type LarkManagedChatInput = {
   requestId: string;
   name: string;
   persona?: { mode: "custom"; name: string; instructions: string };
-  execution?: { engineId: string; model: string };
+  execution?: LarkTopicEngineSelection;
 };
 export type LarkManagedChat = Pick<LarkManagedChatInput, "requestId" | "name"> & {
   chatId: string | null;

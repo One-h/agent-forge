@@ -14,6 +14,7 @@ const requestId = "1d36ce04-da32-4ab4-9191-7fbbf7247778";
 const input = { requestId, name: "Private group" };
 const persona = { mode: "custom", name: "Reviewer", instructions: "Review only what was requested." };
 const execution = { engineId: "codex", model: "fixture-model" };
+const defaultEngine = { engineId: "dsh", model: null };
 const item = { ...input, status: "ready", chatId: "oc_fixture", openUrl: null, createdAt: "2026-11-21T00:00:00Z",
   error: null, persona: null, execution: null };
 
@@ -35,7 +36,7 @@ async function withRoute(run: (app: FastifyInstance) => Promise<void>) {
 }
 
 test("managed chats proxy only the authenticated registry route and preserve creation inputs", () => withRoute(async app => {
-  const catalog = [{ id: "codex", label: "Codex", models: [execution.model] }];
+  const catalog = [{ id: "codex", label: "Codex", models: [execution.model] }, { id: "dsh", label: "DSH", models: [] }];
   const upstreamRequests: Array<{ url: string; method?: string; body?: unknown; auth: string | null }> = [];
   globalThis.fetch = async (url, init) => {
     const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
@@ -43,12 +44,12 @@ test("managed chats proxy only the authenticated registry route and preserve cre
     const headers = new Headers(init?.headers);
     if (init?.method === "POST") assert.equal(headers.get("content-type"), "application/json");
     upstreamRequests.push({ url: String(url), method: init?.method, body, auth: headers.get("authorization") });
-    return Response.json(body ? { item: { ...item, ...body } } : { items: [item], engines: catalog });
+    return Response.json(body ? { item: { ...item, ...body } } : { items: [{ ...item, execution: defaultEngine }], engines: catalog });
   };
   const list = await app.inject({ method: "GET", url: `${route}?includeAll=true` });
   assert.equal(list.statusCode, 200);
-  assert.deepEqual(list.json(), { items: [item], engines: catalog });
-  for (const payload of [input, { ...input, persona, execution }]) {
+  assert.deepEqual(list.json(), { items: [{ ...item, execution: defaultEngine }], engines: catalog });
+  for (const payload of [input, { ...input, persona, execution }, { ...input, execution: defaultEngine }]) {
     const result = await app.inject({ method: "POST", url: route, payload });
     assert.equal(result.statusCode, 200, result.body);
     assert.deepEqual(result.json(), { item: { ...item, ...payload } });
@@ -56,7 +57,8 @@ test("managed chats proxy only the authenticated registry route and preserve cre
   assert.deepEqual(upstreamRequests, [
     { url: target, method: "GET", body: undefined, auth: "Bearer fixture-token" },
     { url: target, method: "POST", body: input, auth: "Bearer fixture-token" },
-    { url: target, method: "POST", body: { ...input, persona, execution }, auth: "Bearer fixture-token" }
+    { url: target, method: "POST", body: { ...input, persona, execution }, auth: "Bearer fixture-token" },
+    { url: target, method: "POST", body: { ...input, execution: defaultEngine }, auth: "Bearer fixture-token" }
   ]);
 }));
 
@@ -66,7 +68,8 @@ test("managed chats reject invalid input, non-local callers and missing credenti
   for (const payload of [
     { ...input, requestId: "not-a-uuid" }, { ...input, name: " " }, { ...input, ownerId: "ou_other" },
     { ...input, memberIds: ["ou_other"] }, { ...input, botId: "cli_other" },
-    { ...input, persona: { ...persona, mode: "default" } }, { ...input, execution: { ...execution, model: null } }
+    { ...input, persona: { ...persona, mode: "default" } }, { ...input, execution: { ...execution, model: " " } },
+    { ...input, execution: { engineId: "dsh" } }
   ]) {
     const result = await app.inject({ method: "POST", url: route, payload });
     assert.equal(result.statusCode, 400, result.body);
