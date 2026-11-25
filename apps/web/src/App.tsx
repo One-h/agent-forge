@@ -19,7 +19,7 @@ import { StickerLibrary } from "./pages/StickerLibrary";
 import { TodoList } from "./pages/TodoList";
 import { ApprovalHistory } from "./pages/ApprovalHistory";
 import { useChromeNotifications } from "./useChromeNotifications";
-import { api } from "./api";
+import { api, type ForgeRuntimeStatus } from "./api";
 
 export function App() {
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("autofix.sidebarCollapsed") === "true");
   const navigationRef = useRef<HTMLElement>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() => localStorage.getItem("autofix.theme") === "dark" ? "dark" : "light");
-  const [runtimeStatus, setRuntimeStatus] = useState<Awaited<ReturnType<typeof api.settings>>["runtimeStatus"] | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<ForgeRuntimeStatus | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const chromeNotifications = useChromeNotifications(navigate);
 
@@ -49,11 +49,12 @@ export function App() {
 
   useEffect(() => {
     document.title = "Agent Forge";
+    let active = true;
     const loadRuntimeStatus = () => {
-      void api.settings().then((settings) => {
-        setRuntimeStatus(settings.runtimeStatus);
+      void api.runtimeStatus().then((status) => {
+        if (active) setRuntimeStatus(status);
       }).catch(() => {
-        setRuntimeStatus(null);
+        if (active) setRuntimeStatus(null);
       });
     };
     loadRuntimeStatus();
@@ -63,6 +64,7 @@ export function App() {
     const timer = window.setInterval(refreshWhenVisible, 30_000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
+      active = false;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
@@ -187,7 +189,7 @@ export function App() {
               </button>}
               {showLarkStatus && <button className={`statusItem ${runtimeStatus?.larkListenerRunning ? "ok" : "muted"}`} type="button" onClick={() => navigate("/lark-messages")} title="查看飞书消息">
                 <MessageSquareText size={14} />
-                <span>{runtimeStatus?.larkListenerRunning ? "飞书已监听" : "飞书未监听"}</span>
+                <span>{runtimeStatus?.larkListenerRunning == null ? "飞书状态未知" : runtimeStatus.larkListenerRunning ? "飞书已监听" : "飞书未监听"}</span>
               </button>}
               {showWorkStatus && (runtimeStatus?.recentFailedJobs ?? 0) > 0 && (
                 <button className="statusItem warning" type="button" onClick={() => navigate("/runs")} title="查看近期失败任务">

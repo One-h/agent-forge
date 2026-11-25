@@ -95,20 +95,36 @@ export function SettingsPage() {
     onConfirm: () => Promise<void>;
   } | null>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const initialLoadStarted = useRef(false);
+  const supportRequestId = useRef(0);
 
-  const loadSupportingData = async (refresh = false) => {
+  const loadSupportingData = async (setupComplete: boolean, refresh = false) => {
+    const requestId = ++supportRequestId.current;
+    const maintenance = settingsSection === "maintenance";
+    const needsRepositories = settingsSection === "common" || !setupComplete;
+    if (!maintenance && !needsRepositories) {
+      setSupportLoading(false);
+      return;
+    }
     setSupportLoading(true);
     try {
       const [nextDiagnostics, nextRepositories, nextLaunchAgent, nextLocalData, nextAuditEvents] = await Promise.all([
-        api.diagnostics(refresh), api.discoverRepositories(refresh), api.launchAgent(), api.localDataUsage(), api.localAudit()
+        maintenance || !setupComplete ? api.diagnostics(refresh) : null,
+        needsRepositories ? api.discoverRepositories(refresh) : null,
+        maintenance ? api.launchAgent() : null,
+        maintenance ? api.localDataUsage() : null,
+        maintenance ? api.localAudit() : null
       ]);
-      setDiagnostics(nextDiagnostics);
-      setRepositories(nextRepositories);
-      setLaunchAgent(nextLaunchAgent);
-      setLocalData(nextLocalData);
-      setAuditEvents(nextAuditEvents);
+      if (requestId !== supportRequestId.current) return;
+      if (nextDiagnostics) setDiagnostics(nextDiagnostics);
+      if (nextRepositories) setRepositories(nextRepositories);
+      if (nextLaunchAgent) setLaunchAgent(nextLaunchAgent);
+      if (nextLocalData) setLocalData(nextLocalData);
+      if (nextAuditEvents) setAuditEvents(nextAuditEvents);
+    } catch (err) {
+      if (requestId === supportRequestId.current) setError(String(err));
     } finally {
-      setSupportLoading(false);
+      if (requestId === supportRequestId.current) setSupportLoading(false);
     }
   };
 
@@ -131,7 +147,7 @@ export function SettingsPage() {
     setGroupReactionChatIds((next.appSettings.larkGroupMessageReactionChatIds ?? []).join("\n"));
     setSpontaneousPercent(String(Number(((next.appSettings.larkGroupSpontaneousReplyRate ?? 0.08) * 100).toFixed(4))));
     setSpontaneousCooldownMinutes(String(Number(((next.appSettings.larkGroupSpontaneousReplyCooldownMs ?? 600_000) / 60_000).toFixed(4))));
-    void loadSupportingData(refresh).catch((err) => setError(String(err)));
+    if (refresh) void loadSupportingData(next.setupComplete, true);
   };
 
   const refreshSettings = () => {
@@ -140,8 +156,15 @@ export function SettingsPage() {
   };
 
   useEffect(() => {
+    if (initialLoadStarted.current) return;
+    initialLoadStarted.current = true;
     void load().catch((err) => setError(String(err)));
   }, []);
+  const setupComplete = settings?.setupComplete;
+  useEffect(() => {
+    if (setupComplete !== undefined) void loadSupportingData(setupComplete);
+    return () => { supportRequestId.current++; };
+  }, [settingsSection, setupComplete]);
 
   const refreshModelCatalog = async () => {
     setModelCatalogError(false);
@@ -149,9 +172,10 @@ export function SettingsPage() {
     catch { setModelCatalog([]); setModelCatalogError(true); }
   };
 
+  const needsModelCatalog = isLarkArea("models") || isLarkArea("approvals");
   useEffect(() => {
-    if (settingsSection === "lark") void refreshModelCatalog();
-  }, [settingsSection]);
+    if (needsModelCatalog && modelCatalog === null) void refreshModelCatalog();
+  }, [needsModelCatalog, modelCatalog]);
 
   const updateSetting = async (patch: Partial<Settings["appSettings"]>) => {
     if (!settings) return;

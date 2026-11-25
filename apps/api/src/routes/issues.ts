@@ -506,6 +506,22 @@ function isLocalForgeRequest(request: FastifyRequest): boolean {
     && (!origin || [`http://localhost:${config.webPort}`, `http://127.0.0.1:${config.webPort}`].includes(origin));
 }
 
+function forgeRuntimeCounters() {
+  return db.prepare(`SELECT
+    COALESCE((SELECT value FROM app_settings WHERE key='giteaSearchSyncAt'),
+      (SELECT value FROM app_settings WHERE key='giteaFullSyncAt')) AS lastGiteaSyncAt,
+    (SELECT count(*) FROM repair_jobs WHERE status IN ('queued','running')) +
+      (SELECT count(*) FROM pr_review_runs WHERE status IN ('pending','running')) AS activeCodexJobs,
+    (SELECT count(*) FROM repair_jobs WHERE status IN ('failed','blocked')
+      AND updated_at >= datetime('now','-7 days')) AS recentFailedJobs`).get() as {
+    lastGiteaSyncAt: string | null; activeCodexJobs: number; recentFailedJobs: number;
+  };
+}
+
+function readOptionalLark(path: string, timeout: number) {
+  return larkAgentRequest(path, { signal: AbortSignal.timeout(timeout) }).catch(() => null) as Promise<Record<string, unknown> | null>;
+}
+
 const orchestrationPath = "/v1/orchestration-tasks";
 const orchestrationQuery = z.object({ messageId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   status: z.string().regex(/^[a-z_]{1,40}$/).optional(), offset: z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional() }).strict();
@@ -769,12 +785,25 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
     const job = response.json() as Record<string, unknown>;
     return reply.code(response.statusCode).send({ ...job, _receipt: { status: "executed", summary: id === "forge.gitea.review-pr" ? "已发起 PR 评审任务；任务结果尚未完成验证。" : "已发起 Issue 分析任务；任务结果尚未完成验证。", evidence: job.id ? [`job_id: ${String(job.id)}`] : [] } });
   });
+  app.get("/api/runtime-status", async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const remote = config.larkAgentUrl ? await readOptionalLark("/v1/settings", 1_000) : null;
+    const larkListenerRunning = config.larkAgentUrl
+      ? typeof remote?.listenerRunning === "boolean" ? remote.listenerRunning : null
+      : larkMessageWorkerStatus().running;
+    return { ...forgeRuntimeCounters(), larkListenerRunning };
+  });
+
   app.get("/api/settings", async () => {
     const appSettings = getAppSettings();
     const runtimeConfig = persistedRuntimeConfig();
-    const remoteLarkSettings = config.larkAgentUrl
-      ? await larkAgentFetch("/v1/settings").catch(() => null) as Record<string, unknown> | null
-      : null;
+    const hasStandaloneLark = Boolean(config.larkAgentUrl);
+    const [remoteLarkSettings, standaloneLark, remotePrompts, larkCodexNative] = await Promise.all([
+      hasStandaloneLark ? readOptionalLark("/v1/settings", 3_000) : null,
+      hasStandaloneLark ? readOptionalLark("/v1/health", 1_500) : null,
+      hasStandaloneLark ? readOptionalLark("/v1/prompts", 3_000) : null,
+      hasStandaloneLark ? null : larkCodexNativeRuntime()
+    ]);
     const remoteAppSettings = readLarkAppSettings(remoteLarkSettings);
     Object.assign(appSettings, remoteAppSettings);
     if (config.larkAgentUrl) appSettings.larkTrustedExecutionEnabled = remoteAppSettings.larkTrustedExecutionEnabled === true;
@@ -785,19 +814,17 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
     const trustedSenderIds = new Set([runtimeConfig.larkExecutionApproverId, ...runtimeConfig.trustedLarkCodexSenderIds].filter(Boolean));
     const trustedExecutionKnown = !config.larkAgentUrl || typeof remoteLarkSettings?.trustedExecutionEnabled === "boolean";
     const trustedExecutionAvailable = appSettings.larkTrustedExecutionEnabled && trustedSenderIds.size > 0;
-    const activeRepairJobs = db.prepare("SELECT count(*) AS count FROM repair_jobs WHERE status IN ('queued', 'running')").get() as { count: number };
-    const activeReviewRuns = db.prepare("SELECT count(*) AS count FROM pr_review_runs WHERE status IN ('pending', 'running')").get() as { count: number };
-    const recentFailures = db.prepare(`
-      SELECT count(*) AS count
-      FROM repair_jobs
-      WHERE status IN ('failed', 'blocked')
-        AND updated_at >= datetime('now', '-7 days')
-    `).get() as { count: number };
     const legacyLarkWorker = larkMessageWorkerStatus();
-    const standaloneLark = config.larkAgentUrl ? await larkAgentFetch("/v1/health").catch(() => null) as { listenerRunning?: boolean; approvalListenerRunning?: boolean; activeTurns?: number } | null : null;
-    const larkWorker = standaloneLark ? { ...legacyLarkWorker, enabled: true, running: Boolean(standaloneLark.listenerRunning), approvalRunning: Boolean(standaloneLark.approvalListenerRunning), command: "Lark Agent Runtime" } : legacyLarkWorker;
+    const remoteRuntime = standaloneLark ?? remoteLarkSettings;
+    const larkWorker = remoteRuntime ? { ...legacyLarkWorker, enabled: true, running: remoteRuntime.listenerRunning === true,
+      approvalRunning: remoteRuntime.approvalListenerRunning === true, command: "Lark Agent Runtime" } : legacyLarkWorker;
     const larkCodexServer = larkCodexAppServerStatus();
-    const larkCodexNative = await larkCodexNativeRuntime();
+    const defaults = configurablePromptSettings();
+    const prompts = hasStandaloneLark ? { ...defaults, larkAssistant: {
+      value: String(remotePrompts?.larkAssistant ?? "").trim() || String(remotePrompts?.defaultLarkAssistant ?? "").trim() || defaults.larkAssistant.defaultValue,
+      defaultValue: String(remotePrompts?.defaultLarkAssistant ?? "").trim() || defaults.larkAssistant.defaultValue,
+      customized: remotePrompts?.customized === true
+    } } : defaults;
     return {
       workspaceRoot: runtimeConfig.workspaceRoot,
       runtimeConfig,
@@ -814,9 +841,9 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
       codexReasoningEffort: config.codexReasoningEffort,
       larkCodexResponder: {
         transport: "app-server",
-        running: standaloneLark ? true : larkCodexServer.running,
-        activeTurns: standaloneLark?.activeTurns ?? larkCodexServer.activeTurns,
-        lastError: standaloneLark ? null : larkCodexServer.lastError,
+        running: remoteRuntime ? true : larkCodexServer.running,
+        activeTurns: typeof standaloneLark?.activeTurns === "number" ? standaloneLark.activeTurns : larkCodexServer.activeTurns,
+        lastError: remoteRuntime ? null : larkCodexServer.lastError,
         progressReminderMs: config.larkCodexProgressReminderMs,
         model: appSettings.larkCodexModel,
         reasoningEffort: appSettings.larkCodexReasoningEffort,
@@ -829,27 +856,17 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
         sandbox: !trustedExecutionKnown ? "unknown" : trustedExecutionAvailable ? "trusted-senders-bypass-others-read-only" : "all-senders-read-only",
         approvalRecipientConfigured: Boolean(runtimeConfig.larkExecutionApproverId),
         trustedSenderCount: trustedSenderIds.size,
-        native: standaloneLark ? { available: false, refreshedAt: null, configuredModelAvailable: null, models: [], skills: [], threads: [] } : larkCodexNative
+        native: larkCodexNative ?? { available: false, refreshedAt: null, configuredModelAvailable: null, models: [], skills: [], threads: [] }
       },
       larkMessageListener: larkWorker,
       runtimeStatus: {
-        lastGiteaSyncAt: appSettingValue("giteaSearchSyncAt") ?? appSettingValue("giteaFullSyncAt"),
-        activeCodexJobs: activeRepairJobs.count + activeReviewRuns.count,
-        recentFailedJobs: recentFailures.count,
+        ...forgeRuntimeCounters(),
         larkListenerRunning: larkWorker.running
       },
       appSettings,
       larkSettingsKnown,
       larkRuntimeControls: readLarkRuntimeControls(config.larkAgentToken ? remoteLarkSettings : null),
-      prompts: config.larkAgentUrl
-        ? await (async () => {
-            const defaults = configurablePromptSettings();
-            const remote = await larkAgentFetch("/v1/prompts").catch(() => ({ larkAssistant: "", defaultLarkAssistant: "", customized: false })) as { larkAssistant?: unknown; defaultLarkAssistant?: unknown; customized?: unknown };
-            const value = String(remote.larkAssistant ?? "").trim();
-            const defaultValue = String(remote.defaultLarkAssistant ?? "").trim() || defaults.larkAssistant.defaultValue;
-            return { ...defaults, larkAssistant: { value: value || defaultValue, defaultValue, customized: remote.customized === true } };
-          })()
-        : configurablePromptSettings()
+      prompts
     };
   });
 

@@ -3271,6 +3271,38 @@ test("helper supports the remaining Agent-only writable fields without adding Fo
   } finally { config.larkAgentUrl = previousUrl; globalThis.fetch = originalFetch; }
 });
 
+test("Forge chrome status avoids prompts and dependency probes, without treating unconfirmed status as off", async () => {
+  const previousUrl = config.larkAgentUrl, originalFetch = globalThis.fetch;
+  config.larkAgentUrl = "http://runtime.test";
+  const app = Fastify({ logger: false });
+  await app.register(issueRoutes);
+  const calls: string[] = [];
+  let live: boolean | undefined = true;
+  globalThis.fetch = async (input, init) => {
+    calls.push(new URL(String(input)).pathname);
+    assert.ok(init?.signal instanceof AbortSignal);
+    if (live === undefined) throw new Error("Agent not available");
+    return Response.json({ listenerRunning: live, trustedSenderIds: ["fixture-owner"] });
+  };
+  try {
+    const read = () => app.inject("/api/runtime-status");
+    const first = await read();
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.headers["cache-control"], "no-store");
+    assert.deepEqual(Object.keys(first.json()).sort(), ["activeCodexJobs", "larkListenerRunning", "lastGiteaSyncAt", "recentFailedJobs"]);
+    assert.equal(first.json().larkListenerRunning, true);
+    live = false;
+    assert.equal((await read()).json().larkListenerRunning, false);
+    live = undefined;
+    assert.equal((await read()).json().larkListenerRunning, null);
+    assert.deepEqual(calls, ["/v1/settings", "/v1/settings", "/v1/settings"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    config.larkAgentUrl = previousUrl;
+    await app.close();
+  }
+});
+
 test("Forge task dashboard proxies only local, authenticated read requests", async () => {
   const previousUrl = config.larkAgentUrl, previousToken = config.larkAgentToken, originalFetch = globalThis.fetch;
   config.larkAgentUrl = "http://runtime.test";

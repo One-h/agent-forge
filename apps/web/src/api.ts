@@ -717,6 +717,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+const activeReads = new Map<string, Promise<unknown>>();
+
+function readTogether<T>(path: string): Promise<T> {
+  const active = activeReads.get(path);
+  if (active) return active as Promise<T>;
+  const next = request<T>(path).finally(() => activeReads.delete(path));
+  activeReads.set(path, next);
+  return next;
+}
+
+export type ForgeRuntimeStatus = Omit<Settings["runtimeStatus"], "larkListenerRunning"> & { larkListenerRunning: boolean | null };
+
 function larkExecutionPath(chatId: string, threadId?: string): string {
   const chat = `/api/lark/chats/${encodeURIComponent(chatId)}`;
   return `${chat}${threadId ? `/topics/${encodeURIComponent(threadId)}` : ""}/execution`;
@@ -734,13 +746,14 @@ export const api = {
   approvalHistory: (options: { kind: "auto" | "manual"; source?: string; status?: string; q?: string; offset: number }) => {
     const params = new URLSearchParams({ kind: options.kind, limit: "50", offset: String(options.offset) });
     for (const key of ["source", "status", "q"] as const) if (options[key]) params.set(key, options[key]);
-    return request<ApprovalHistoryPage>(`/api/lark/approval-history?${params}`);
+    return readTogether<ApprovalHistoryPage>(`/api/lark/approval-history?${params}`);
   },
   approvalHistoryDetail: (kind: ApprovalHistoryItem["kind"], id: number) => request<ApprovalHistoryDetail>(`/api/lark/approval-history/${kind}/${id}`),
   issues: () => request<Issue[]>("/api/issues"),
   pulls: (scope: PullScope = "relevant") => request<Issue[]>(`/api/pulls?scope=${encodeURIComponent(scope)}`),
   settings: () => request<Settings>("/api/settings"),
-  larkModels: () => request<{ models: LarkCodexModel[] }>("/api/lark/models"),
+  runtimeStatus: () => readTogether<ForgeRuntimeStatus>("/api/runtime-status"),
+  larkModels: () => readTogether<{ models: LarkCodexModel[] }>("/api/lark/models"),
   updateLarkRuntimeControls: (patch: Partial<Record<LarkWritableRuntimeControl, boolean>>) =>
     request<Partial<Record<LarkWritableRuntimeControl, boolean>>>("/api/lark/runtime-controls", {
       method: "PATCH", body: JSON.stringify(patch)
@@ -805,7 +818,7 @@ export const api = {
     if (options.limit) params.set("limit", String(options.limit));
     if (options.offset !== undefined) params.set("offset", String(options.offset));
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request<LarkConversationPage>(`/api/lark/conversations${suffix}`);
+    return readTogether<LarkConversationPage>(`/api/lark/conversations${suffix}`);
   },
   larkConversationMessages: (contactId: string, options: { cursor?: string; limit?: number } = {}) => {
     const params = new URLSearchParams();
