@@ -92,6 +92,11 @@
   --shadow-drawer: -16px 0 44px rgba(29, 29, 34, 0.14), -2px 0 8px rgba(29, 29, 34, 0.04);
   --focus-ring: 0 0 0 3px rgba(199, 70, 66, 0.22);
   --motion-fast: 140ms ease;
+  --workspace-sidebar-size: 232px;
+  --workspace-sidebar-compact: 76px;
+  --workspace-control-size: 36px;
+  --settings-sidebar-size: 168px;
+  --settings-content-size: 840px;
 
   color: var(--color-text);
   background: var(--color-bg);
@@ -243,13 +248,13 @@ a:hover {
 .appShell {
   background: var(--color-bg);
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: var(--workspace-sidebar-size) minmax(0, 1fr);
   min-height: 100vh;
   transition: grid-template-columns 160ms ease;
 }
 
 .appShell.sidebarCollapsed {
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: var(--workspace-sidebar-compact) minmax(0, 1fr);
 }
 
 .sidebar {
@@ -516,6 +521,48 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
   padding: var(--space-7);
 }
 
+.workspaceSwitcher {
+  background: var(--color-bg-inset);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: var(--space-1);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: var(--space-1);
+}
+
+.workspaceSwitcher a {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  gap: var(--space-1);
+  justify-content: center;
+  min-height: 49px;
+  min-width: 0;
+  padding: var(--space-1);
+  text-decoration: none;
+}
+
+.workspaceSwitcher a:hover, .workspaceSwitcher a[aria-current] {
+  background: var(--color-bg-panel);
+  color: var(--color-text);
+}
+.workspaceSwitcher a[aria-current] { border-color: var(--color-border); }
+.workspaceSwitcher a[aria-current] svg { color: var(--color-accent); }
+.workspaceLinks { min-width: 0; }
+
+@media (min-width: 981px) {
+  .sidebar { align-self: start; height: 100dvh; overflow: auto; position: sticky; top: 0; }
+  .sidebarCollapsed .workspaceSwitcher { grid-template-columns: minmax(0, 1fr); }
+  .sidebarCollapsed .workspaceSwitcher a { min-height: var(--workspace-control-size); }
+  .sidebarCollapsed .workspaceSwitcher a span { display: none; }
+}
+
 .topbar,
 .detailHeader,
 .heroBand,
@@ -576,6 +623,26 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
 .topbar {
   margin-bottom: var(--space-7);
 }
+
+.topbar.workspaceTopbar {
+  border-bottom: 1px solid var(--color-border-subtle);
+  gap: var(--space-4);
+  margin-bottom: var(--space-7);
+  min-height: 44px;
+  padding-bottom: var(--space-3);
+}
+.workspaceBreadcrumb {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: var(--text-md);
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workspaceBreadcrumb svg { flex: none; }
+.workspaceBreadcrumb strong { color: var(--color-text); }
+.workspaceTopbar .statusCluster { background: transparent; border: 0; border-radius: var(--radius-md); padding: 0; }
 
 .topbar h1,
 .heroBand h2,
@@ -2747,17 +2814,45 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.settingsSectionNav {
+.settingsPage { display: grid; gap: var(--space-6); }
+.settingsPageHeading { align-items: center; display: flex; justify-content: space-between; }
+.settingsTitle { font-size: var(--text-2xl); line-height: 1.3; margin: 0; }
+.settingsLayout {
+  align-items: start;
+  display: grid;
+  gap: var(--space-8);
+  grid-template-columns: var(--settings-sidebar-size) minmax(0, var(--settings-content-size));
+  min-width: 0;
+}
+.settingsSectionNav { display: grid; gap: var(--space-1); min-width: 0; }
+.settingsSectionNav a, .settingsAreaNav a {
   align-items: center;
-  display: flex;
-  gap: var(--space-4);
-  justify-content: space-between;
-  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  display: inline-flex;
+  font-weight: 650;
+  gap: var(--space-3);
+  min-height: var(--workspace-control-size);
+  min-width: 0;
+  padding: var(--space-2) var(--space-4);
+  text-decoration: none;
 }
-
-.settingsSectionNav .subtle {
-  margin: 0;
+.settingsSectionNav a svg { flex: none; }
+.settingsSectionNav a:hover, .settingsAreaNav a:hover { background: var(--color-bg-control-hover); color: var(--color-text); }
+.settingsSectionNav a[aria-current], .settingsAreaNav a[aria-current] {
+  background: var(--color-bg-selected);
+  border-color: var(--color-accent-border);
+  color: var(--color-text);
 }
+.settingsContent { border-left: 1px solid var(--color-border-subtle); display: grid; gap: var(--space-5); min-width: 0; padding-left: var(--space-8); }
+.settingsContent > h2 { font-size: var(--text-xl); line-height: 1.35; margin: 0; }
+.settingsAreaNav { border-bottom: 1px solid var(--color-border-subtle); display: flex; flex-wrap: wrap; gap: var(--space-1); padding-bottom: var(--space-3); }
+.settingsContent .settingsGrid { gap: 0; grid-template-columns: minmax(0, 1fr); }
+.settingsContent .settingsGrid > .panel { background: transparent; border: 0; border-top: 1px solid var(--color-border-subtle); border-radius: 0; box-shadow: none; min-width: 0; padding: var(--space-6) 0; }
+.settingsContent .settingsGrid > .panel:first-child { border-top: 0; padding-top: var(--space-1); }
+.settingsContent .settingsGrid .settingsField { margin-top: var(--space-5); padding-top: var(--space-5); }
+.settingsContent .inlineControl > :is(input, select, textarea) { min-width: 0; }
 
 .settingsGrid h3 {
   align-items: center;
@@ -4005,20 +4100,22 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
   .appShell,
   .appShell.sidebarCollapsed {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .sidebar,
   .appShell.sidebarCollapsed .sidebar {
-    align-items: center;
-    flex-direction: row;
-    overflow: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--space-3);
+    overflow: hidden;
     padding: var(--space-4);
   }
 
   .sidebarHeader,
   .appShell.sidebarCollapsed .sidebarHeader {
     flex-direction: row;
-    min-width: max-content;
+    min-width: 0;
   }
 
   .brand,
@@ -4038,6 +4135,12 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
     display: flex;
     min-width: max-content;
   }
+
+  .workspaceSwitcher { align-self: start; width: min(320px, 100%); }
+  .workspaceSwitcher a { flex-direction: row; gap: var(--space-2); min-height: var(--workspace-control-size); }
+  .nav.workspaceLinks { gap: var(--space-2); min-width: 0; overflow-x: auto; padding: var(--space-1); }
+  .nav.workspaceLinks a { flex: none; white-space: nowrap; }
+  .appShell.sidebarCollapsed .nav.workspaceLinks { display: none; }
 
   .nav a,
   .appShell.sidebarCollapsed .nav a {
@@ -4142,6 +4245,13 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
 }
 
 @media (max-width: 760px) {
+  .topbar.workspaceTopbar { align-items: center; flex-direction: row; flex-wrap: wrap; }
+  .workspaceTopbar .topbarActions { flex-wrap: wrap; min-width: 0; }
+  .workspaceTopbar .statusCluster { flex-wrap: wrap; }
+  .settingsLayout { gap: var(--space-5); grid-template-columns: minmax(0, 1fr); }
+  .settingsSectionNav { display: flex; flex-wrap: wrap; }
+  .settingsSectionNav a { flex: none; white-space: nowrap; }
+  .settingsContent { border-left: 0; border-top: 1px solid var(--color-border-subtle); padding: var(--space-5) 0 0; }
   .conversationWorkspace {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(220px, 34vh) minmax(480px, 66vh);
@@ -4214,11 +4324,6 @@ button.approvalRow:hover { background: var(--color-bg-panel-hover); }
   .commandPalette {
     max-height: calc(100vh - 32px);
     top: 16px;
-  }
-
-  .settingsSectionNav {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .confirmationDialog {

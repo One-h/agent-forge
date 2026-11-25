@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { CheckCircle2, Download, FileText, FolderGit2, HardDrive, History, KeyRound, Power, RefreshCw, Save, Settings2, ShieldCheck, Stethoscope, Trash2, Upload } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { CheckCircle2, Download, FileText, FolderGit2, HardDrive, History, KeyRound, MessageSquareText, Power, RefreshCw, Save, Settings2, ShieldCheck, Stethoscope, Trash2, Upload, Zap } from "lucide-react";
 import { api, type LarkCodexModel, type LarkWritableRuntimeControl, type LaunchAgentStatus, type LocalAuditEvent, type LocalBackup, type LocalDataUsage, type LocalDiagnostic, type LocalRepository, type PromptKey, type PromptSettings, type RuntimeConfig, type Settings } from "../api";
 import { CompanyScopeSettings } from "../components/CompanyScopeSettings";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -33,7 +33,20 @@ const reasoningEffortOptions: Array<[Settings["appSettings"]["larkCodexReasoning
   ["low", "低"], ["medium", "中"], ["high", "高"], ["xhigh", "更高"], ["max", "最高"], ["ultra", "超高"]
 ];
 
+const settingsSections = [
+  { id: "common", label: "连接与仓库", icon: FolderGit2 },
+  { id: "automation", label: "自动化", icon: Zap },
+  { id: "lark", label: "飞书", icon: MessageSquareText },
+  { id: "prompts", label: "提示词", icon: FileText },
+  { id: "maintenance", label: "本机维护", icon: HardDrive }
+] as const;
+const larkAreas = [
+  { id: "messages", label: "消息" }, { id: "dispatch", label: "派工与回复" }, { id: "models", label: "模型" },
+  { id: "groups", label: "群聊" }, { id: "approvals", label: "审批" }
+] as const;
+
 export function SettingsPage() {
+  const [settingsParams] = useSearchParams();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [diagnostics, setDiagnostics] = useState<LocalDiagnostic[]>([]);
   const [repositories, setRepositories] = useState<LocalRepository[]>([]);
@@ -67,7 +80,11 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [contactsSyncing, setContactsSyncing] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
-  const [settingsSection, setSettingsSection] = usePersistentState<"common" | "automation" | "lark" | "prompts" | "maintenance">("autofix.settings.section", "common");
+  const [storedSection, setStoredSection] = usePersistentState<string>("autofix.settings.section", "common");
+  const currentSection = settingsSections.find(section => section.id === (settingsParams.get("section") ?? storedSection)) ?? settingsSections[0];
+  const settingsSection = currentSection.id;
+  const currentArea = larkAreas.find(area => area.id === settingsParams.get("area")) ?? larkAreas[0];
+  const isLarkArea = (id: typeof larkAreas[number]["id"]) => settingsSection === "lark" && currentArea.id === id;
   const [promptDrafts, setPromptDrafts] = useState<PromptSettings | null>(null);
   const [activePromptKey, setActivePromptKey] = useState<PromptKey>("larkAssistant");
   const [confirmation, setConfirmation] = useState<{
@@ -115,6 +132,11 @@ export function SettingsPage() {
     setSpontaneousPercent(String(Number(((next.appSettings.larkGroupSpontaneousReplyRate ?? 0.08) * 100).toFixed(4))));
     setSpontaneousCooldownMinutes(String(Number(((next.appSettings.larkGroupSpontaneousReplyCooldownMs ?? 600_000) / 60_000).toFixed(4))));
     void loadSupportingData(refresh).catch((err) => setError(String(err)));
+  };
+
+  const refreshSettings = () => {
+    setError("");
+    void load(true).catch((err) => setError(String(err)));
   };
 
   useEffect(() => {
@@ -465,7 +487,11 @@ export function SettingsPage() {
   };
 
   if (!settings) {
-    return <section className="panel">正在加载设置...</section>;
+    return <section className="pageStack">
+      <h1 className="settingsTitle">设置</h1>
+      {error ? <div className="error" role="alert">{error} <button type="button" className="ghostButton" onClick={refreshSettings}>重试</button></div>
+        : <div className="emptyState" role="status">正在加载设置…</div>}
+    </section>;
   }
 
   const repositoryChoices = new Map<string, LocalRepository>();
@@ -493,27 +519,28 @@ export function SettingsPage() {
   const visibleEfforts = supportedEfforts.length > 0 ? supportedEfforts : reasoningEffortOptions;
 
   return (
-    <section className="pageStack">
-      <div className="heroBand">
-        <div>
-          <p className="eyebrow">本机运行时</p>
-          <h2>设置</h2>
-          <p className="subtle">此设备的仓库、凭据与自动化能力。</p>
-        </div>
-        <button className="ghostButton" onClick={() => void load(true)}><RefreshCw className={supportLoading ? "spin" : undefined} size={16} /> 刷新</button>
+    <section className="settingsPage" aria-labelledby="settings-title">
+      <div className="settingsPageHeading">
+        <h1 className="settingsTitle" id="settings-title">设置</h1>
+        <button className="iconButton" type="button" aria-label="刷新设置" title="刷新设置" disabled={supportLoading || saving} onClick={refreshSettings}>
+          <RefreshCw className={supportLoading ? "spin" : undefined} size={16} />
+        </button>
       </div>
-      {error && <div className="error">{error}</div>}
-      {notice && <div className="notice">{notice}</div>}
-      <div className="settingsSectionNav">
-        <div className="segmentedControl" aria-label="设置分类">
-          <button className={settingsSection === "common" ? "active" : ""} onClick={() => setSettingsSection("common")} type="button">常用</button>
-          <button className={settingsSection === "automation" ? "active" : ""} onClick={() => setSettingsSection("automation")} type="button">自动化</button>
-          <button className={settingsSection === "lark" ? "active" : ""} onClick={() => setSettingsSection("lark")} type="button">飞书</button>
-          <button className={settingsSection === "prompts" ? "active" : ""} onClick={() => setSettingsSection("prompts")} type="button">提示词</button>
-          <button className={settingsSection === "maintenance" ? "active" : ""} onClick={() => setSettingsSection("maintenance")} type="button">本机维护</button>
-        </div>
-        <span className="subtle">{settingsSection === "common" ? "连接服务、凭据、仓库和同步策略" : settingsSection === "automation" ? "控制自动评审和 Issue 修复" : settingsSection === "lark" ? "派工、消息与审批" : settingsSection === "prompts" ? "编辑飞书与工程任务的 Codex 指令" : "检查环境、管理常驻服务和本机数据"}</span>
-      </div>
+      <div className="settingsLayout">
+        <nav className="settingsSectionNav" aria-label="设置分类">
+          {settingsSections.map(({ id, label, icon: Icon }) => <Link key={id} to={{ search: `?section=${id}` }}
+            aria-current={settingsSection === id ? "page" : undefined} onClick={() => setStoredSection(id)}>
+            <Icon size={17} aria-hidden="true" />{label}
+          </Link>)}
+        </nav>
+        <div className="settingsContent">
+      <h2>{currentSection.label}</h2>
+      {settingsSection === "lark" && <nav className="settingsAreaNav" aria-label="飞书设置分类">
+        {larkAreas.map(({ id, label }) => <Link key={id} to={{ search: `?section=lark&area=${id}` }}
+          aria-current={currentArea.id === id ? "page" : undefined}>{label}</Link>)}
+      </nav>}
+      {error && <div className="error" role="alert">{error}</div>}
+      {notice && <div className="notice" role="status">{notice}</div>}
       {!settings.setupComplete && (
         <section className="panel onboardingPanel">
           <div className="onboardingHeader"><div><p className="eyebrow">首次配置</p><h3>配置本机工作台</h3></div><span>{wizardStep + 1} / 4</span></div>
@@ -656,7 +683,7 @@ export function SettingsPage() {
           </div>
         </div>}
 
-        {settingsSection === "lark" && <section className="panel" aria-labelledby="lark-runtime-controls-heading">
+        {isLarkArea("dispatch") && <section className="panel" aria-labelledby="lark-runtime-controls-heading">
           <h3 id="lark-runtime-controls-heading">派工与回复</h3>
           <dl className="meta wide">
             <dt>派工模块</dt><dd>{larkControls?.taskOrchestrationEnabled === true ? "已加载" : larkControls?.taskOrchestrationEnabled === false ? "未加载" : "状态未知"}</dd>
@@ -681,7 +708,7 @@ export function SettingsPage() {
           {larkControls?.ownerApproverConfigured === false && <p className="subtle" role="status">尚未配置飞书审批接收人。</p>}
         </section>}
 
-        {settingsSection === "lark" && <div className="panel">
+        {isLarkArea("messages") && <div className="panel">
           <h3>飞书消息</h3>
           <dl className="meta wide">
             <dt>监听器</dt><dd><span className={`badge ${settings.larkMessageListener.running ? "done" : settings.appSettings.larkMessageListenerEnabled ? "queued" : "blocked"}`}>{settings.larkMessageListener.running ? "运行中" : settings.appSettings.larkMessageListenerEnabled ? "启动中" : "关闭"}</span></dd>
@@ -763,6 +790,10 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+        </div>}
+
+        {isLarkArea("models") && <div className="panel">
+          <h3>会话模型</h3>
           <div className="settingsField">
             <label htmlFor="larkCodexModel">飞书会话模型</label>
             <p className="subtle">后续飞书消息使用当前模型；进行中的回合不变。</p>
@@ -807,6 +838,10 @@ export function SettingsPage() {
               {visibleEfforts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </div>
+        </div>}
+
+        {isLarkArea("groups") && <div className="panel">
+          <h3>群聊与话题</h3>
           <SettingToggle checked={settings.appSettings.larkOwnerMentionAssistEnabled ?? false} disabled={saving || settings.larkSettingsKnown?.larkOwnerMentionAssistEnabled !== true} label="协同处理群里 @本人的消息" onChange={(checked) => void updateSetting({ larkOwnerMentionAssistEnabled: checked })} />
           {(settings.larkSettingsKnown?.larkOwnerMentionAssistEnabled !== true || settings.larkSettingsKnown?.larkOwnerMentionAssistOwnerId !== true) && <p className="subtle" role="status">群聊协同状态未知，当前 API / Agent 不可配置。</p>}
           <div className="settingsField">
@@ -845,6 +880,10 @@ export function SettingsPage() {
             <textarea id="spontaneousChatIds" disabled={saving} rows={3} placeholder={"oc_群ID1\noc_群ID2"} value={spontaneousChatIds} onChange={(event) => setSpontaneousChatIds(event.target.value)} />
             <div className="inlineActions"><button disabled={saving} type="button" onClick={() => void updateSetting({ larkGroupSpontaneousChatIds: [...new Set(spontaneousChatIds.split(/[,，;；\s]+/).filter(Boolean))] })}>保存白名单</button></div>
           </div>
+        </div>}
+
+        {isLarkArea("approvals") && <div className="panel">
+          <h3>授权与审批</h3>
           <SettingToggle checked={settings.appSettings.larkTrustedExecutionEnabled} disabled={saving || !settings.larkCodexResponder.trustedExecutionConfigurable} label="允许可信发送人高权限执行" onChange={(checked) => void updateSetting({ larkTrustedExecutionEnabled: checked })} />
           {!settings.larkCodexResponder.trustedExecutionConfigurable && <p className="subtle">当前 Agent 未提供有效可信执行配置；请检查连接或更新 Agent 后再保存。</p>}
           <SettingToggle checked={settings.appSettings.larkTurnAutoApprovalEnabled} disabled={saving || !settings.larkCodexResponder.turnAutoApprovalConfigurable} label="自动审批当前任务" onChange={(checked) => void updateSetting({ larkTurnAutoApprovalEnabled: checked })} />
@@ -939,6 +978,8 @@ export function SettingsPage() {
             {auditEvents.length === 0 && <div className="emptyState small">尚无本地操作记录。</div>}
           </div>
         </div>}
+      </div>
+        </div>
       </div>
       {confirmation && <ConfirmDialog {...confirmation} onCancel={() => setConfirmation(null)} />}
     </section>

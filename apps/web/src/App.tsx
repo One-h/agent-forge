@@ -1,8 +1,8 @@
 import { GroupPrivacyPage } from "./pages/GroupPrivacy";
 import { AgentMessagingPage } from "./pages/AgentMessaging";
 import { useEffect, useRef, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Activity, Bell, ChevronRight, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, Mail, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Route as RouteIcon, Settings2, Shield, ShieldCheck, Sun, Users, WandSparkles, Workflow } from "lucide-react";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Activity, Bell, BriefcaseBusiness, ChevronRight, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, Mail, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Route as RouteIcon, Settings2, Shield, ShieldCheck, Sun, Users, WandSparkles, Workflow } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { IssueDetailDrawer } from "./components/IssueDetailDrawer";
 import { Dashboard } from "./pages/Dashboard";
@@ -28,13 +28,12 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("autofix.sidebarCollapsed") === "true");
   const navigationRef = useRef<HTMLElement>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() => localStorage.getItem("autofix.theme") === "dark" ? "dark" : "light");
-  const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [runtimeStatus, setRuntimeStatus] = useState<Awaited<ReturnType<typeof api.settings>>["runtimeStatus"] | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const chromeNotifications = useChromeNotifications(navigate);
 
   useEffect(() => {
-    const mobile = window.matchMedia("(max-width: 760px)");
+    const mobile = window.matchMedia("(max-width: 980px)");
     const revealActive = () => {
       const navigation = navigationRef.current;
       const active = navigation?.querySelector('[aria-current="page"]');
@@ -52,10 +51,8 @@ export function App() {
     document.title = "Agent Forge";
     const loadRuntimeStatus = () => {
       void api.settings().then((settings) => {
-        setWorkspaceRoot(settings.workspaceRoot);
         setRuntimeStatus(settings.runtimeStatus);
       }).catch(() => {
-        setWorkspaceRoot("");
         setRuntimeStatus(null);
       });
     };
@@ -99,13 +96,13 @@ export function App() {
     setSelectedIssueId(issue.id);
   };
 
-  const navGroups = [{ id: "work", label: "研发工作", items: [
+  const navGroups = [{ id: "work", label: "研发工作", short: "研发", icon: BriefcaseBusiness, items: [
     { to: "/dashboard", label: "概览", icon: Gauge },
     { to: "/issues", label: "问题", icon: Inbox },
     { to: "/pulls", label: "拉取请求", icon: GitPullRequestArrow },
     { to: "/notifications", label: "通知", icon: Bell },
     { to: "/todos", label: "待办", icon: ListTodo },
-  ] }, { id: "lark", label: "飞书工作台", items: [
+  ] }, { id: "lark", label: "飞书工作台", short: "飞书", icon: MessageSquareText, items: [
     { to: "/lark-messages", label: "消息", icon: MessageSquareText },
     { to: "/lark-tasks", label: "派工任务", icon: Workflow },
     { to: "/lark-managed-chats", label: "群聊", icon: Users },
@@ -114,11 +111,15 @@ export function App() {
     { to: "/personal-inbox", label: "个人收件箱", icon: Mail },
     { to: "/approvals", label: "审批记录", icon: ShieldCheck },
     { to: "/stickers", label: "表情包库", icon: Images },
-  ] }, { id: "system", label: "系统", items: [
-    { to: "/runs", label: "运行记录", icon: Activity },
+  ] }, { id: "system", label: "系统", short: "系统", icon: Settings2, items: [
     { to: "/settings", label: "设置", icon: Settings2 },
+    { to: "/runs", label: "运行记录", icon: Activity },
   ] }];
-  const larkWorkspace = navGroups[1].items.some(({ to }) => pathname === to || pathname.startsWith(to + "/"));
+  const matchesPath = (to: string) => pathname === to || pathname.startsWith(to + "/");
+  const activeGroup = navGroups.find(group => group.items.some(({ to }) => matchesPath(to))) ?? navGroups[0];
+  const activePage = activeGroup.items.find(({ to }) => matchesPath(to)) ?? activeGroup.items[0];
+  const showWorkStatus = activeGroup.id !== "lark";
+  const showLarkStatus = activeGroup.id !== "work";
 
   return (
     <main className={`appShell${sidebarCollapsed ? " sidebarCollapsed" : ""}`}>
@@ -128,7 +129,6 @@ export function App() {
             <div className="brandMark" aria-hidden="true"><WandSparkles size={19} strokeWidth={2.4} /></div>
             <div className="brandText">
               <strong>Agent Forge</strong>
-              <span>研发任务控制台</span>
             </div>
           </div>
           <button
@@ -142,27 +142,26 @@ export function App() {
             {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
         </div>
-        <nav ref={navigationRef} className="nav navGrouped" aria-label="主导航">
-          {navGroups.map(({ id, label, items }) => (
-            <section className="navGroup" aria-label={label} key={id}>
-              <span className="navGroupLabel" aria-hidden="true">{label}</span>
-              {items.map(({ to, label: name, icon: Icon }) => (
-                <NavLink key={to} to={to} title={sidebarCollapsed ? name : undefined} aria-label={name}>
-                  <Icon size={17} aria-hidden="true" />
-                  <span className="navLabel">{name}</span>
-                </NavLink>
-              ))}
-            </section>
+        <nav className="workspaceSwitcher" aria-label="切换工作区">
+          {navGroups.map(({ id, label, short, icon: Icon, items }) => (
+            <Link key={id} to={id === activeGroup.id ? activePage.to : items[0].to} aria-label={label} title={label}
+              aria-current={id === activeGroup.id ? "location" : undefined}>
+              <Icon size={17} aria-hidden="true" /><span>{short}</span>
+            </Link>
+          ))}
+        </nav>
+        <nav ref={navigationRef} className="nav workspaceLinks" aria-label={activeGroup.label}>
+          {activeGroup.items.map(({ to, label, icon: Icon }) => (
+            <NavLink key={to} to={to} title={sidebarCollapsed ? label : undefined} aria-label={label}>
+              <Icon size={17} aria-hidden="true" /><span className="navLabel">{label}</span>
+            </NavLink>
           ))}
         </nav>
       </aside>
 
       <section className="workspace">
-        <header className={`topbar${larkWorkspace ? " larkTopbar" : ""}`}>
-          {larkWorkspace ? <div className="larkTopbarPath"><span>Agent Forge</span><ChevronRight size={14} aria-hidden="true" /><strong>飞书工作台</strong></div> : <div>
-            <p className="eyebrow">{workspaceRoot || "本机工作区"}</p>
-            <h1>Agent Forge</h1>
-          </div>}
+        <header className="topbar workspaceTopbar">
+          <div className="workspaceBreadcrumb"><span>{activeGroup.label}</span><ChevronRight size={14} aria-hidden="true" /><strong>{activePage.label}</strong></div>
           <div className="topbarActions">
             <button
               className="iconButton"
@@ -178,19 +177,19 @@ export function App() {
               <Command size={15} /> <span>搜索</span><kbd>K</kbd>
             </button>
             <div className="statusCluster" aria-label="本机运行状态">
-              <button className="statusItem" type="button" onClick={() => navigate("/issues")} title="查看最近 Gitea 同步">
+              {showWorkStatus && <button className="statusItem" type="button" onClick={() => navigate("/issues")} title="查看最近 Gitea 同步">
                 <RefreshCw size={14} />
                 <span>{runtimeStatus?.lastGiteaSyncAt ? "已同步" : "未同步"}</span>
-              </button>
-              <button className={`statusItem ${runtimeStatus?.activeCodexJobs ? "active" : ""}`} type="button" onClick={() => navigate("/runs")} title="查看 Codex 运行记录">
+              </button>}
+              {showWorkStatus && <button className={`statusItem ${runtimeStatus?.activeCodexJobs ? "active" : ""}`} type="button" onClick={() => navigate("/runs")} title="查看 Codex 运行记录">
                 <Activity size={14} />
                 <span>{runtimeStatus?.activeCodexJobs ?? 0} 运行中</span>
-              </button>
-              <button className={`statusItem ${runtimeStatus?.larkListenerRunning ? "ok" : "muted"}`} type="button" onClick={() => navigate("/lark-messages")} title="查看飞书消息">
+              </button>}
+              {showLarkStatus && <button className={`statusItem ${runtimeStatus?.larkListenerRunning ? "ok" : "muted"}`} type="button" onClick={() => navigate("/lark-messages")} title="查看飞书消息">
                 <MessageSquareText size={14} />
                 <span>{runtimeStatus?.larkListenerRunning ? "飞书已监听" : "飞书未监听"}</span>
-              </button>
-              {(runtimeStatus?.recentFailedJobs ?? 0) > 0 && (
+              </button>}
+              {showWorkStatus && (runtimeStatus?.recentFailedJobs ?? 0) > 0 && (
                 <button className="statusItem warning" type="button" onClick={() => navigate("/runs")} title="查看近期失败任务">
                   <CircleAlert size={14} />
                   <span>{runtimeStatus?.recentFailedJobs} 失败</span>
