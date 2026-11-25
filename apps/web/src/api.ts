@@ -402,6 +402,19 @@ export type LarkExecutionConfig = {
 
 export type LarkMessageDetail = LarkMessage & { executionConfigs?: LarkExecutionConfig[] };
 
+export type LarkTaskEngine = { engine: string; model?: string };
+export type LarkTaskSummary = {
+  id: string; messageId: number; status: string; goal: string; worker: LarkTaskEngine;
+  chatType: string | null; requestedAt: string | null; requesterName: string | null;
+};
+export type LarkTaskDetail = LarkTaskSummary & {
+  execution: (LarkTaskEngine & { id: string; state: string }) | null;
+  result: { id: string; text: string; artifacts: { id: number; name: string; size: number | null; commitId: string | null }[] } | null;
+  review: { required: boolean; pending: boolean; reviewer: LarkTaskEngine | null;
+    decision: { source: string; verdict: string; reason: string } | null };
+  delivery: { id: string; state: string; receipt: string | null; artifactName: string | null; attemptedAt: string | null }[];
+};
+
 export type LarkTopicEngineSelection = { engineId: string; model: string | null };
 export type LarkTopicExecutionSettings = {
   override: LarkTopicEngineSelection | null;
@@ -804,6 +817,14 @@ export const api = {
   larkCodexSessions: (chatId: string) => request<LarkCodexSessions>(`/api/lark/conversations/${encodeURIComponent(chatId)}/sessions`),
   resetLarkCodexSession: (chatId: string, sessionKey: string, expectedSessionId: string) => request<{ sessionKey: string; oldSessionId: string; resetAt: string }>(`/api/lark/conversations/${encodeURIComponent(chatId)}/sessions/reset`, { method: "POST", body: JSON.stringify({ sessionKey, expectedSessionId }) }),
   larkMessage: (id: number) => request<LarkMessageDetail>(`/api/lark/messages/${id}`),
+  larkTasks: (filters: { messageId?: number; status?: string; offset?: number } = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value !== undefined) query.set(key, String(value));
+    return request<{ items: LarkTaskSummary[]; hasMore: boolean }>(`/api/lark/orchestration-tasks?${query}`, { signal });
+  },
+  larkTask: (id: string, signal?: AbortSignal) => request<LarkTaskDetail>(`/api/lark/orchestration-tasks/${encodeURIComponent(id)}`, { signal }),
+  larkTaskFile: (id: string, resultId: string, fileId: number) =>
+    `/api/lark/orchestration-tasks/${encodeURIComponent(id)}/results/${encodeURIComponent(resultId)}/files/${fileId}`,
   larkExecution: (chatId: string, threadId: string | undefined, signal?: AbortSignal) =>
     request<LarkTopicExecutionSettings>(larkExecutionPath(chatId, threadId), { signal }),
   updateLarkExecution: (chatId: string, threadId: string | undefined, override: LarkTopicEngineSelection | null) =>

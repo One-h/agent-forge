@@ -506,6 +506,26 @@ function isLocalForgeRequest(request: FastifyRequest): boolean {
     && (!origin || [`http://localhost:${config.webPort}`, `http://127.0.0.1:${config.webPort}`].includes(origin));
 }
 
+const orchestrationPath = "/v1/orchestration-tasks";
+const orchestrationQuery = z.object({ messageId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  status: z.string().regex(/^[a-z_]{1,40}$/).optional(), offset: z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional() }).strict();
+const orchestrationTaskId = z.string().uuid();
+const orchestrationFiles = z.object({ taskId: orchestrationTaskId, resultId: orchestrationTaskId,
+  artifactId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
+
+function allowTaskRead(request: FastifyRequest, reply: FastifyReply): boolean {
+  reply.header("Cache-Control", "no-store");
+  if (!isLocalForgeRequest(request)) {
+    void reply.code(403).send({ error: "派工记录仅限本机 Forge 查看" });
+    return false;
+  }
+  if (!config.larkAgentUrl || !config.larkAgentToken) {
+    void reply.code(503).send({ error: "未配置 Lark Agent 连接或运行时凭据" });
+    return false;
+  }
+  return true;
+}
+
 function sendLarkAgentProxyError(reply: FastifyReply, request: FastifyRequest, error: unknown) {
   if (error instanceof LarkAgentResponseError) {
     const body = error.responseBody;
@@ -1046,6 +1066,51 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
     }
+  });
+
+  app.get("/api/lark/orchestration-tasks", async (request, reply) => {
+    if (!allowTaskRead(request, reply)) return reply;
+    const query = orchestrationQuery.safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ error: "派工筛选条件无效" });
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query.data)) if (value !== undefined) params.set(key, String(value));
+    try { return await larkAgentProxyFetch(`${orchestrationPath}?${params}`, { signal: AbortSignal.timeout(5_000), redirect: "error" }); }
+    catch (error) {
+      if (error instanceof LarkAgentResponseError && error.statusCode === 404)
+        return reply.code(503).send({ error: "当前 Lark Agent 未加载派工查询接口" });
+      return sendLarkAgentProxyError(reply, request, error);
+    }
+  });
+  app.get("/api/lark/orchestration-tasks/:taskId", async (request, reply) => {
+    if (!allowTaskRead(request, reply)) return reply;
+    const parsed = orchestrationTaskId.safeParse((request.params as { taskId: string }).taskId);
+    if (!parsed.success) return reply.code(400).send({ error: "派工任务 ID 无效" });
+    try { return await larkAgentProxyFetch(`${orchestrationPath}/${parsed.data}`, { signal: AbortSignal.timeout(5_000), redirect: "error" }); }
+    catch (error) {
+      if (error instanceof LarkAgentResponseError && error.statusCode === 404)
+        return reply.code(404).send({ error: "未找到派工任务，或当前运行时不支持查询" });
+      return sendLarkAgentProxyError(reply, request, error);
+    }
+  });
+  app.get("/api/lark/orchestration-tasks/:taskId/results/:resultId/files/:artifactId", async (request, reply) => {
+    if (!allowTaskRead(request, reply)) return reply;
+    const parsed = orchestrationFiles.safeParse(request.params);
+    if (!parsed.success) return reply.code(400).send({ error: "派工产物 ID 无效" });
+    const { taskId, resultId, artifactId } = parsed.data;
+    try {
+      const response = await fetch(`${config.larkAgentUrl}${orchestrationPath}/${taskId}/results/${resultId}/files/${artifactId}`, {
+        headers: { authorization: `Bearer ${config.larkAgentToken}` }, signal: AbortSignal.timeout(10_000), redirect: "error"
+      });
+      const disposition = response.headers.get("content-disposition");
+      const length = response.headers.get("content-length");
+      if (!response.ok || !disposition || !/^attachment; filename="[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}"$/.test(disposition)
+        || !length || !/^\d{1,7}$/.test(length) || Number(length) > 4 * 1024 * 1024 || response.headers.has("content-encoding")) {
+        await response.body?.cancel();
+        return reply.code(response.status === 404 ? 404 : response.status === 409 ? 409 : 502).send({ error: "当前结果的冻结文件不可用" });
+      }
+      return reply.type("application/octet-stream").header("X-Content-Type-Options", "nosniff")
+        .header("Content-Disposition", disposition).send(Buffer.from(await response.arrayBuffer()));
+    } catch { return reply.code(502).send({ error: "无法读取派工文件" }); }
   });
 
   app.get("/api/lark/approval-history", async (request, reply) => {

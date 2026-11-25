@@ -3271,6 +3271,58 @@ test("helper supports the remaining Agent-only writable fields without adding Fo
   } finally { config.larkAgentUrl = previousUrl; globalThis.fetch = originalFetch; }
 });
 
+test("Forge task dashboard proxies only local, authenticated read requests", async () => {
+  const previousUrl = config.larkAgentUrl, previousToken = config.larkAgentToken, originalFetch = globalThis.fetch;
+  config.larkAgentUrl = "http://runtime.test";
+  config.larkAgentToken = "fixture-runtime-token";
+  const app = Fastify({ logger: false });
+  await app.register(issueRoutes);
+  const calls: string[] = [];
+  const id = "0e793327-00ce-44ca-a040-14dbeb4e04ca";
+  const resultId = "c6ececd2-dbc8-4dcc-9eb4-9b571a80f674";
+  let enabled = true;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(init?.method ?? "GET", "GET");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-runtime-token");
+    assert.equal(init?.redirect, "error");
+    const url = new URL(String(input));
+    calls.push(url.pathname + url.search);
+    if (!enabled) return new Response("Not found", { status: 404 });
+    if (url.pathname.endsWith("/files/1")) return new Response("col\n1\n", { headers: {
+      "Content-Disposition": 'attachment; filename="result.csv"', "Content-Length": "6"
+    } });
+    return Response.json(url.pathname.endsWith(id) ? { id } : { items: [], hasMore: false });
+  };
+  const base = "/api/lark/orchestration-tasks";
+  const upstream = "/v1/orchestration-tasks";
+  try {
+    assert.equal((await app.inject({ url: base, remoteAddress: "192.0.2.1" })).statusCode, 403);
+    assert.equal((await app.inject({ url: base, headers: { origin: "https://foreign.example" } })).statusCode, 403);
+    assert.equal((await app.inject(`${base}?unexpected=1`)).statusCode, 400);
+    assert.equal((await app.inject(`${base}/invalid`)).statusCode, 400);
+    assert.deepEqual(calls, []);
+    const page = await app.inject(`${base}?messageId=42&status=running&offset=50`);
+    assert.deepEqual(page.json(), { items: [], hasMore: false });
+    assert.equal(page.headers["cache-control"], "no-store");
+    assert.deepEqual((await app.inject(`${base}/${id}`)).json(), { id });
+    const file = await app.inject(`${base}/${id}/results/${resultId}/files/1`);
+    assert.equal(file.statusCode, 200);
+    assert.equal(file.headers["content-type"], "application/octet-stream");
+    assert.equal(file.headers["content-disposition"], 'attachment; filename="result.csv"');
+    assert.equal(file.body, "col\n1\n");
+    assert.deepEqual(calls, [`${upstream}?messageId=42&status=running&offset=50`, `${upstream}/${id}`,
+      `${upstream}/${id}/results/${resultId}/files/1`]);
+    enabled = false;
+    assert.equal((await app.inject(base)).statusCode, 503);
+    assert.equal((await app.inject(`${base}/${id}`)).statusCode, 404);
+  } finally {
+    globalThis.fetch = originalFetch;
+    config.larkAgentUrl = previousUrl;
+    config.larkAgentToken = previousToken;
+    await app.close();
+  }
+});
+
 test("Forge exposes only supported Agent runtime controls and uses the Agent as the single writer", async () => {
   resetTables();
   const previousUrl = config.larkAgentUrl, previousToken = config.larkAgentToken, originalFetch = globalThis.fetch;

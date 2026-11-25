@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Workflow } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, type LarkMessageArtifacts, type LarkMessageDetail, type LarkMessageFile, type LarkMessageImage } from "../api";
 import { CodexEventTimeline } from "../components/CodexEventTimeline";
 import { DetailDrawer } from "../components/DetailDrawer";
@@ -104,6 +105,20 @@ export function LarkMessageDetailDrawer({ messageId, onClose }: { messageId: num
   const [files, setFiles] = useState<LarkMessageFile[] | null>(null);
   const [tab, setTab] = useState<"content" | "artifacts" | "media" | "topic">("content");
   const [error, setError] = useState("");
+  const [task, setTask] = useState<{ messageId: number; id: string } | null>(null);
+  const isInbound = message?.id === messageId && message.direction === "inbound";
+
+  useEffect(() => {
+    if (!isInbound) return;
+    const controller = new AbortController();
+    const lookup = () => void api.larkTasks({ messageId }, controller.signal).then(page => {
+      if (!controller.signal.aborted) setTask(page.items[0] ? { messageId, id: page.items[0].id } : null);
+    }).catch(() => { /* Message details remain usable with older Lark runtimes. */ });
+    lookup();
+    const active = ["queued", "running"].includes(message?.codex_status ?? "");
+    const timer = active ? window.setInterval(() => { if (!document.hidden) lookup(); }, 10_000) : undefined;
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [isInbound, messageId, message?.codex_status]);
 
   const load = useCallback(async () => {
     setMessage(await api.larkMessage(messageId));
@@ -194,7 +209,10 @@ export function LarkMessageDetailDrawer({ messageId, onClose }: { messageId: num
       kicker={topic ? "飞书话题" : "飞书 Codex 会话"}
       title={`消息 #${message.id}`}
       onClose={onClose}
-      actions={<button className="ghostButton" onClick={refresh}><RefreshCw size={16} /> 刷新</button>}
+      actions={<>
+        {isInbound && task?.messageId === messageId && <Link className="ghostButton" to={`/lark-tasks/${encodeURIComponent(task.id)}?messageId=${messageId}`}><Workflow size={16} />派工详情</Link>}
+        <button className="ghostButton" onClick={refresh}><RefreshCw size={16} /> 刷新</button>
+      </>}
     >
       {error && <div className="error">{error}</div>}
       <div className="drawerStack">

@@ -2,13 +2,14 @@ import { GroupPrivacyPage } from "./pages/GroupPrivacy";
 import { AgentMessagingPage } from "./pages/AgentMessaging";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Activity, Bell, ChevronRight, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, Mail, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Route as RouteIcon, Settings2, Shield, ShieldCheck, Sun, Users, WandSparkles } from "lucide-react";
+import { Activity, Bell, ChevronRight, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, Mail, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Route as RouteIcon, Settings2, Shield, ShieldCheck, Sun, Users, WandSparkles, Workflow } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { IssueDetailDrawer } from "./components/IssueDetailDrawer";
 import { Dashboard } from "./pages/Dashboard";
 import { IssueList } from "./pages/IssueList";
 import { LarkMessageList } from "./pages/LarkMessageList";
 import { LarkManagedChatsPage } from "./pages/LarkManagedChats";
+import { LarkTasksPage } from "./pages/LarkTasks";
 import { PersonalInboxPage } from "./pages/PersonalInbox";
 import { NotificationList } from "./pages/NotificationList";
 import { PullRequestList } from "./pages/PullRequestList";
@@ -106,6 +107,7 @@ export function App() {
     { to: "/todos", label: "待办", icon: ListTodo },
   ] }, { id: "lark", label: "飞书工作台", items: [
     { to: "/lark-messages", label: "消息", icon: MessageSquareText },
+    { to: "/lark-tasks", label: "派工任务", icon: Workflow },
     { to: "/lark-managed-chats", label: "群聊", icon: Users },
     { to: "/group-privacy", label: "群聊隐私审批", icon: Shield },
     { to: "/agent-messaging", label: "Agent 消息路由", icon: RouteIcon },
@@ -218,6 +220,7 @@ export function App() {
           />
           <Route path="/todos" element={<TodoList />} />
           <Route path="/lark-messages" element={<LarkMessageList />} />
+          <Route path="/lark-tasks/:taskId?" element={<LarkTasksPage />} />
           <Route path="/lark-managed-chats" element={<LarkManagedChatsPage />} />
           <Route path="/group-privacy" element={<GroupPrivacyPage />} />
           <Route path="/agent-messaging" element={<AgentMessagingPage />} />
