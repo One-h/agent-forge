@@ -9,12 +9,16 @@ import { api } from "../api.ts";
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    const aliases = { "../api": new URL("../api.ts", import.meta.url).href, "../components/OwnerMentionAssists": new URL("./OwnerMentionAssists.tsx", import.meta.url).href };
+    const aliases = {
+      "../api": new URL("../api.ts", import.meta.url).href,
+      "../components/OwnerMentionAssists": new URL("./OwnerMentionAssists.tsx", import.meta.url).href,
+      "../components/LarkWorkspaceHeader": new URL("./LarkWorkspaceHeader.tsx", import.meta.url).href
+    };
     return nextResolve(aliases[specifier] ?? specifier, context);
   },
   load(url, context, nextLoad) {
   if (url === new URL("../pages/personalInbox.css", import.meta.url).href) return { format: "module", source: "", shortCircuit: true };
-  if (["./OwnerMentionAssists.tsx", "../pages/PersonalInbox.tsx"].some(file => url === new URL(file, import.meta.url).href)) {
+  if (["./OwnerMentionAssists.tsx", "./LarkWorkspaceHeader.tsx", "../pages/PersonalInbox.tsx"].some(file => url === new URL(file, import.meta.url).href)) {
     const { outputText } = ts.transpileModule(readFileSync(new URL(url), "utf8"), {
       compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
     });

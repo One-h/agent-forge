@@ -1,8 +1,8 @@
 import { GroupPrivacyPage } from "./pages/GroupPrivacy";
 import { AgentMessagingPage } from "./pages/AgentMessaging";
-import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { Activity, Bell, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings2, ShieldCheck, Sun, Users, WandSparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Activity, Bell, ChevronRight, CircleAlert, Command, Gauge, GitPullRequestArrow, Images, Inbox, ListTodo, Mail, MessageSquareText, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Route as RouteIcon, Settings2, Shield, ShieldCheck, Sun, Users, WandSparkles } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { IssueDetailDrawer } from "./components/IssueDetailDrawer";
 import { Dashboard } from "./pages/Dashboard";
@@ -22,13 +22,30 @@ import { api } from "./api";
 
 export function App() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [selectedIssueId, setSelectedIssueId] = useState<number | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("autofix.sidebarCollapsed") === "true");
+  const navigationRef = useRef<HTMLElement>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() => localStorage.getItem("autofix.theme") === "dark" ? "dark" : "light");
   const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [runtimeStatus, setRuntimeStatus] = useState<Awaited<ReturnType<typeof api.settings>>["runtimeStatus"] | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const chromeNotifications = useChromeNotifications(navigate);
+
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 760px)");
+    const revealActive = () => {
+      const navigation = navigationRef.current;
+      const active = navigation?.querySelector('[aria-current="page"]');
+      if (!mobile.matches || sidebarCollapsed || !navigation || !active) return;
+      const frame = navigation.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      if (item.left < frame.left || item.right > frame.right) navigation.scrollLeft += item.left - frame.left;
+    };
+    revealActive();
+    mobile.addEventListener("change", revealActive);
+    return () => mobile.removeEventListener("change", revealActive);
+  }, [pathname, sidebarCollapsed]);
 
   useEffect(() => {
     document.title = "Agent Forge";
@@ -81,25 +98,28 @@ export function App() {
     setSelectedIssueId(issue.id);
   };
 
-  const navItems = [
+  const navGroups = [{ id: "work", label: "研发工作", items: [
     { to: "/dashboard", label: "概览", icon: Gauge },
     { to: "/issues", label: "问题", icon: Inbox },
     { to: "/pulls", label: "拉取请求", icon: GitPullRequestArrow },
     { to: "/notifications", label: "通知", icon: Bell },
     { to: "/todos", label: "待办", icon: ListTodo },
-    { to: "/lark-messages", label: "飞书消息", icon: MessageSquareText },
-    { to: "/lark-managed-chats", label: "飞书群聊", icon: Users },
-    { to: "/group-privacy", label: "群聊隐私审批", icon: Inbox },
-    { to: "/agent-messaging", label: "Agent 消息路由", icon: Inbox },
-    { to: "/personal-inbox", label: "个人收件箱", icon: Inbox },
+  ] }, { id: "lark", label: "飞书工作台", items: [
+    { to: "/lark-messages", label: "消息", icon: MessageSquareText },
+    { to: "/lark-managed-chats", label: "群聊", icon: Users },
+    { to: "/group-privacy", label: "群聊隐私审批", icon: Shield },
+    { to: "/agent-messaging", label: "Agent 消息路由", icon: RouteIcon },
+    { to: "/personal-inbox", label: "个人收件箱", icon: Mail },
     { to: "/approvals", label: "审批记录", icon: ShieldCheck },
     { to: "/stickers", label: "表情包库", icon: Images },
+  ] }, { id: "system", label: "系统", items: [
     { to: "/runs", label: "运行记录", icon: Activity },
     { to: "/settings", label: "设置", icon: Settings2 },
-  ];
+  ] }];
+  const larkWorkspace = navGroups[1].items.some(({ to }) => pathname === to || pathname.startsWith(to + "/"));
 
   return (
-    <main className={`appShell ${sidebarCollapsed ? "sidebarCollapsed" : ""}`}>
+    <main className={`appShell${sidebarCollapsed ? " sidebarCollapsed" : ""}`}>
       <aside className="sidebar">
         <div className="sidebarHeader">
           <div className="brand">
@@ -120,22 +140,27 @@ export function App() {
             {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
         </div>
-        <nav className="nav">
-          {navItems.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} title={sidebarCollapsed ? label : undefined} aria-label={label}>
-              <Icon size={18} />
-              <span className="navLabel">{label}</span>
-            </NavLink>
+        <nav ref={navigationRef} className="nav navGrouped" aria-label="主导航">
+          {navGroups.map(({ id, label, items }) => (
+            <section className="navGroup" aria-label={label} key={id}>
+              <span className="navGroupLabel" aria-hidden="true">{label}</span>
+              {items.map(({ to, label: name, icon: Icon }) => (
+                <NavLink key={to} to={to} title={sidebarCollapsed ? name : undefined} aria-label={name}>
+                  <Icon size={17} aria-hidden="true" />
+                  <span className="navLabel">{name}</span>
+                </NavLink>
+              ))}
+            </section>
           ))}
         </nav>
       </aside>
 
       <section className="workspace">
-        <header className="topbar">
-          <div>
+        <header className={`topbar${larkWorkspace ? " larkTopbar" : ""}`}>
+          {larkWorkspace ? <div className="larkTopbarPath"><span>Agent Forge</span><ChevronRight size={14} aria-hidden="true" /><strong>飞书工作台</strong></div> : <div>
             <p className="eyebrow">{workspaceRoot || "本机工作区"}</p>
             <h1>Agent Forge</h1>
-          </div>
+          </div>}
           <div className="topbarActions">
             <button
               className="iconButton"

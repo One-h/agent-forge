@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { api, type ApprovalHistoryDetail, type ApprovalHistoryItem, type ApprovalHistoryPage } from "../api";
 import { DetailDrawer } from "../components/DetailDrawer";
+import { LarkRefreshButton, LarkWorkspaceHeader } from "../components/LarkWorkspaceHeader";
 
 const sources = { history: "历史匹配", model: "模型判断", manual: "人工审批" };
 const statuses: Record<string, string> = { approved: "已通过", manual: "转人工", reviewing: "审核中", pending: "待审批", rejected: "已拒绝", expired: "已过期", failed: "失败" };
@@ -75,9 +76,10 @@ export function ApprovalHistory() {
   const resetTab = (value: "auto" | "manual") => { setKind(value); setSource(""); setStatus(""); setOffset(0); setPage(null); };
 
   return <section className="pageStack approvalHistory">
-    <div className="heroBand"><div><p className="eyebrow">飞书执行授权</p><h2>审批记录</h2></div>
-      <button className="ghostButton" disabled={loading} onClick={() => { void load(); if (hasSelection) void loadDetail(); }}><RefreshCw size={16} />刷新</button></div>
-    <div className="metricGrid">
+    <LarkWorkspaceHeader title="审批记录" icon={<ShieldCheck size={18} />} actions={
+      <LarkRefreshButton label="刷新审批记录" disabled={loading} onClick={() => { void load(); if (hasSelection) void loadDetail(); }} />
+    } />
+    <div className="larkApprovalStats" aria-label="审批统计">
       <div className="metric"><span>历史匹配通过</span><strong>{summary?.historyApproved ?? "—"}</strong></div>
       <div className="metric"><span>模型判断通过</span><strong>{summary?.modelApproved ?? "—"}</strong></div>
       <div className="metric"><span>自动审核转人工</span><strong>{summary?.manualRequired ?? "—"}</strong></div>

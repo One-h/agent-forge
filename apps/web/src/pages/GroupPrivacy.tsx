@@ -1,5 +1,6 @@
 import { useEffect,useState } from "react";
-import { ShieldCheck,RefreshCw } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
+import { LarkRefreshButton, LarkWorkspaceHeader } from "../components/LarkWorkspaceHeader";
 import "./personalInbox.css";
 type Message={id:number;chatId:string;content:string;identity:string;category:string;status:string;draft:string;reason:string;error:string|null;version:number;operationJson:string|null;operationOutput:string|null};
 type Snapshot={policy:{enabled?:boolean;companyRoots:string[];autoPublishGenerated:boolean;autoExecute:boolean;personalAccess:boolean};messages:Message[]};
@@ -26,7 +27,9 @@ export function GroupPrivacyPage(){
  useEffect(()=>{void load().then(d=>setRoots(d.policy.companyRoots.join("\n"))).catch(e=>setError(String(e)));const timer=setInterval(()=>{if(!document.hidden)void load().catch(e=>setError(String(e)));},5000);return()=>clearInterval(timer);},[]);
  const perform=async(action:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);setError("");try{await action();await load();}catch(e){setError(String(e));}finally{setBusy(false);}};
  const visible=(data?.messages??[]).filter(row=>all||!["sent","dismissed","forwarded","ignored"].includes(row.status));
- return <section className="pageStack"><div className="heroBand"><div><p className="eyebrow">公司与个人资料隔离</p><h2><ShieldCheck size={23}/>群聊隐私审批</h2><p className="subtle">隐私保护默认关闭。开启后，群消息使用独立无个人工具的分析环境，群回复和操作先由你审核。关闭后恢复普通助手链路，工具执行审批不变。</p></div><button disabled={busy} onClick={()=>void perform(load)}><RefreshCw size={16}/>刷新</button></div>
+ return <section className="pageStack"><LarkWorkspaceHeader title="群聊隐私审批" icon={<ShieldCheck size={18} />} actions={
+   <LarkRefreshButton label="刷新隐私审批" disabled={busy} onClick={()=>void perform(load)} />
+ } />
   {error&&<p role="alert" className="inboxWarning">{error}</p>}
   <label><input type="checkbox" role="switch" checked={data?.policy.enabled===true} disabled={busy||typeof data?.policy.enabled!=="boolean"} onChange={event=>{const enabled=event.target.checked;void perform(async()=>{const saved=await request<Snapshot>("","PATCH",{enabled});if(saved.policy.enabled!==enabled)throw new Error("Lark Agent 未确认开关状态，请先更新服务。");});}}/>启用群聊隐私保护</label>
   {data&&typeof data.policy.enabled!=="boolean"&&<p role="alert">当前 Lark Agent 不支持隐私保护开关，请先更新服务。</p>}

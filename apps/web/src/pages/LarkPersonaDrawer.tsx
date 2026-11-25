@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Eye, RotateCcw, Save } from "lucide-react";
 import { api, type ConversationSettings, type ConversationSpontaneousReply, type ConversationStickerUsage, type ConversationStyle, type LarkCodexSession, type LarkCodexSessions, type PersonaInput } from "../api";
 import { DetailDrawer } from "../components/DetailDrawer";
 import { LarkTopicExecutionSettings } from "../components/LarkTopicExecutionSettings";
 
+const settingsTabs = [["identity", "运行与人设"], ["reply", "回复策略"], ["sessions", "会话记录"]] as const;
+
 export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionReset }: { chatId: string; chatType: "group" | "p2p"; title: string; onClose: () => void; onSessionReset?: () => void }) {
+  const tabId = useId();
+  const [tab, setTab] = useState<(typeof settingsTabs)[number][0]>("identity");
   const [saved, setSaved] = useState<ConversationStyle | null>(null);
   const [conversationSettings, setConversationSettings] = useState<ConversationSettings | null>(null);
   const [draft, setDraft] = useState<PersonaInput>({ mode: "default", name: "", instructions: "" });
@@ -138,7 +142,7 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
   };
   const stickerModeLabels: Record<ConversationStickerUsage["effectiveMode"], string> = { off: "关闭", explicit: "明确请求", natural: "自然使用", always: "每次回复" };
   return <DetailDrawer title="会话设置" kicker={title} onClose={onClose} className="personaDrawer"
-    footer={!loading && saved && conversationSettings ? <>
+    footer={tab === "identity" && !loading && saved && conversationSettings ? <>
       <div className="personaSaveState">{dirty ? "有未保存的修改" : `已保存 · 版本 ${saved.persona.version}`}</div>
       <div className="personaFooterActions">
         <button type="button" className="ghostButton" disabled={busy || saved.persona.mode === "default"} onClick={() => void act("reset")}><RotateCcw size={15} /> 默认人设</button>
@@ -148,7 +152,23 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
     <div className="personaEditor">
       {error && <div className="error" role="alert">{error}</div>}
       {notice && <div className="notice" role="status">{notice}</div>}
-      {loading ? <p role="status">正在加载会话设置…</p> : !saved || !conversationSettings ? <button onClick={() => setReload((value) => value + 1)}>重试</button> : <>
+      {loading ? <p role="status">正在加载会话设置…</p> : !saved || !conversationSettings ? <button className="ghostButton" type="button" onClick={() => setReload((value) => value + 1)}>重试</button> : <>
+        <div className="larkSettingsTabs" role="tablist" aria-label="会话设置分类">
+          {settingsTabs.map(([value, label], index) => <button key={value} id={`${tabId}-tab-${value}`} type="button" role="tab"
+            aria-selected={tab === value} aria-controls={`${tabId}-panel-${value}`} tabIndex={tab === value ? 0 : -1}
+            onClick={() => setTab(value)}
+            onKeyDown={(event) => {
+              const count = settingsTabs.length;
+              const target = event.key === "ArrowRight" ? (index + 1) % count : event.key === "ArrowLeft" ? (index - 1 + count) % count
+                : event.key === "Home" ? 0 : event.key === "End" ? count - 1 : -1;
+              if (target < 0) return;
+              event.preventDefault();
+              const next = settingsTabs[target][0];
+              setTab(next);
+              document.getElementById(`${tabId}-tab-${next}`)?.focus();
+            }}>{label}</button>)}
+        </div>
+        <div className="larkSettingsPanel" role="tabpanel" id={`${tabId}-panel-identity`} aria-labelledby={`${tabId}-tab-identity`} hidden={tab !== "identity"}>
         <LarkTopicExecutionSettings key={chatId} chatId={chatId} />
         <section className="conversationSettingSection">
           <div><strong>会话人设</strong><p>覆盖全局飞书助手的表达风格。当前轮次（含追加消息）保持原人设，下轮对话使用新配置。</p></div>
@@ -162,6 +182,12 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
         </>}
         {draft.mode === "default" && <p className="personaDefaultState">当前使用全局飞书助手人设。</p>}
         </section>
+        <section className="personaPreview">
+          <button type="button" className="ghostButton" aria-expanded={Boolean(preview)} aria-controls={`${tabId}-preview`} disabled={busy || invalid} onClick={() => preview ? setPreview("") : void act("preview")}><Eye size={15} /> {preview ? "收起预览" : "预览完整指令"}</button>
+          {preview && <pre id={`${tabId}-preview`}>{preview}</pre>}
+        </section>
+        </div>
+        <div className="larkSettingsPanel" role="tabpanel" id={`${tabId}-panel-reply`} aria-labelledby={`${tabId}-tab-reply`} hidden={tab !== "reply"}>
         <section className="conversationSettingSection">
           <div><strong>表情包使用</strong><p>当前生效：{stickerModeLabels[conversationSettings.stickerUsage.effectiveMode]}。选择“跟随全局”时使用全局策略。</p></div>
           <div className="segmentedControl conversationStickerMode" aria-label="本会话表情包使用策略" role="radiogroup">
@@ -195,6 +221,8 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
           </div>}
           <button className="primaryButton spontaneousSaveButton" disabled={busy || spontaneousInvalid || !spontaneousDirty} onClick={() => void updateSpontaneousReply()} type="button"><Save size={15} /> 保存随机插话</button>
         </section>}
+        </div>
+        <div className="larkSettingsPanel" role="tabpanel" id={`${tabId}-panel-sessions`} aria-labelledby={`${tabId}-tab-sessions`} hidden={tab !== "sessions"}>
         <section className="conversationSettingSection">
           <div><strong>Codex 会话</strong><p>重置指定会话后，下一条消息会开启新线程。聊天记录及旧线程不受影响。</p></div>
           {sessionsError && <div className="error" role="alert">{sessionsError} <button type="button" onClick={() => setReload((value) => value + 1)}>重试</button></div>}
@@ -209,10 +237,7 @@ export function LarkPersonaDrawer({ chatId, chatType, title, onClose, onSessionR
           </div>)}
           {Boolean(sessions?.previous.length) && <div className="larkSessionHistory"><strong>历史线程</strong>{sessions?.previous.map((session) => <div key={`${session.sessionKey}-${session.codexSessionId}-${session.resetAt}`}><span>{sessionLabel(session)}</span><a href={`codex://threads/${encodeURIComponent(session.codexSessionId)}`}>{session.codexSessionId}</a></div>)}</div>}
         </section>
-        <section className="personaPreview">
-          <button type="button" className="ghostButton" aria-expanded={Boolean(preview)} aria-controls="persona-preview" disabled={busy || invalid} onClick={() => preview ? setPreview("") : void act("preview")}><Eye size={15} /> {preview ? "收起预览" : "预览完整指令"}</button>
-          {preview && <pre id="persona-preview">{preview}</pre>}
-        </section>
+        </div>
       </>}
     </div>
   </DetailDrawer>;

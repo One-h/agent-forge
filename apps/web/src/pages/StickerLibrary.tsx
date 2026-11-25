@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ExternalLink,
   ImagePlus,
+  Images,
   Pencil,
   Plus,
-  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { api, type LarkSticker, type LarkStickerUpload } from "../api";
 import { DetailDrawer } from "../components/DetailDrawer";
+import { LarkRefreshButton, LarkWorkspaceHeader } from "../components/LarkWorkspaceHeader";
 
 const allowedMimeTypes = new Set<LarkStickerUpload["mimeType"]>([
   "image/png",
@@ -309,14 +310,9 @@ export function StickerLibrary() {
 
   return (
     <section className="pageStack">
-      <div className="heroBand stickerHero">
-        <div>
-          <p className="eyebrow">表达资产</p>
-          <h2>表情包库</h2>
-          <p className="subtle">维护 Agent 可主动调用的表情包。用标签缩小范围，再在右侧面板中补充适用场景。</p>
-        </div>
-        <button className="ghostButton" type="button" onClick={() => void load().catch((err) => setError(String(err)))}><RefreshCw size={16} />刷新</button>
-      </div>
+      <LarkWorkspaceHeader title="表情包库" icon={<Images size={18} />} actions={
+        <LarkRefreshButton label="刷新表情包" onClick={() => void load().catch((err) => setError(String(err)))} />
+      } />
 
       <section className="stickerUploadPanel">
         <div className="stickerUploadIcon"><ImagePlus size={24} /></div>

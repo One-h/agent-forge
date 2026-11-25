@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
-import { ExternalLink, RefreshCw, UsersRound } from "lucide-react";
+import { ExternalLink, Plus, UsersRound } from "lucide-react";
 import { api, type LarkManagedChat, type LarkManagedChatInput, type LarkManagedChats } from "../api";
 import { managedLarkChatLink } from "../components/managedLarkChatLink";
+import { DetailDrawer } from "../components/DetailDrawer";
+import { LarkRefreshButton, LarkWorkspaceHeader } from "../components/LarkWorkspaceHeader";
 import "./larkManagedChats.css";
 
 const labels = {
@@ -29,23 +31,25 @@ function ChatRow({ item, engines }: { item: LarkManagedChat; engines: LarkManage
   const status = labels[item.status];
   return <li className="managedChatRow">
     <div className="managedChatSummary">
-      <div className="managedChatTitle"><strong>{item.name}</strong><span className={`badge ${status.badge}`}>{status.title}</span></div>
-      <div className="managedChatMeta subtle">
+      <span className="managedChatIcon" aria-hidden="true"><UsersRound size={17} /></span>
+      <div className="managedChatIdentity">
+        <strong>{item.name}</strong>
         {Number.isFinite(date.getTime()) && <time dateTime={item.createdAt}>{date.toLocaleString()}</time>}
-        <span>{item.persona?.name ?? "默认人设"}</span>
-        <span>{execution ? `${engineLabel} · ${execution.model ?? "默认模型"}` : "默认引擎与模型"}</span>
+        {item.error && <p className="managedChatWarning">{item.error}</p>}
       </div>
-      {item.error && <p className="managedChatWarning">{item.error}</p>}
     </div>
-    {link && <a className="managedChatOpen" href={link} target="_blank" rel="noopener noreferrer" aria-label={`在飞书打开 ${item.name}`}>
-      <ExternalLink size={15} aria-hidden="true" /> 在飞书打开
-    </a>}
+    <div className="managedChatEngine"><strong>{engineLabel ?? "默认引擎"}</strong><small>{execution?.model ?? "默认模型"}</small></div>
+    <span className="managedChatPersona">{item.persona?.name ?? "默认人设"}</span>
+    <span className={`badge ${status.badge}`}>{status.title}</span>
+    <div className="managedChatRowAction">{link && <a className="iconButton managedChatOpen" href={link} target="_blank" rel="noopener noreferrer"
+      title="在飞书打开" aria-label={`在飞书打开 ${item.name}`}><ExternalLink size={15} aria-hidden="true" /></a>}</div>
   </li>;
 }
 
 export function LarkManagedChatsPage() {
   const engineLabelId = useId();
   const modelLabelId = useId();
+  const formId = useId();
   const [snapshot, setSnapshot] = useState<LarkManagedChats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -60,6 +64,8 @@ export function LarkManagedChatsPage() {
   const [createError, setCreateError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [canEdit, setCanEdit] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const createButton = useRef<HTMLButtonElement>(null);
   const attempt = useRef<LarkManagedChatInput | null>(null);
   const inFlight = useRef(false);
 
@@ -74,6 +80,8 @@ export function LarkManagedChatsPage() {
     setCreateError("");
     setCanEdit(false);
     setAnnouncement(`${item.name}：${labels[item.status].title}`);
+    setComposerOpen(false);
+    window.requestAnimationFrame(() => createButton.current?.focus());
   }
 
   useEffect(() => {
@@ -103,6 +111,12 @@ export function LarkManagedChatsPage() {
   const valid = Boolean(name.trim() && [...name.trim()].length <= 60
     && (!customPersona || personaName.trim() && instructions.trim()) && (!engineId || engine && validModel));
   const retrying = Boolean(createError);
+
+  function closeComposer() {
+    if (inFlight.current) return;
+    setComposerOpen(false);
+    window.requestAnimationFrame(() => createButton.current?.focus());
+  }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,16 +149,29 @@ export function LarkManagedChatsPage() {
   }
 
   return <section className="pageStack managedChatsPage" aria-labelledby="managed-chats-heading">
-    <header className="managedChatsHeader">
-      <h2 id="managed-chats-heading">飞书群聊</h2>
-    </header>
-    <section className="conversationSettingSection managedChatComposer" aria-labelledby="create-managed-chat-heading">
-      <div className="sectionHeader"><h3 id="create-managed-chat-heading">新建私有群</h3></div>
-      <p className="subtle managedChatMembers">成员：你和已连接的飞书机器人</p>
-      <form className="managedChatForm" onSubmit={event => void create(event)}>
+    <LarkWorkspaceHeader id="managed-chats-heading" title="飞书群聊" icon={<UsersRound size={18} />} actions={<>
+      <LarkRefreshButton label="刷新群聊列表" disabled={loading || creating} onClick={refreshList} />
+      <button ref={createButton} className="primaryButton" type="button" onClick={() => setComposerOpen(true)}>
+        <Plus size={16} aria-hidden="true" /> 新建私有群
+      </button>
+    </>} />
+    {composerOpen && <DetailDrawer title="新建私有群" className="managedChatDrawer" onClose={closeComposer} footer={<div className="managedChatActions">
+      {canEdit && <button className="ghostButton" type="button" onClick={() => {
+        attempt.current = null;
+        setCanEdit(false);
+        setCreateError("");
+      }}>修改表单</button>}
+      <button className="primaryButton" type="submit" form={formId} disabled={creating || loading || !snapshot || (!retrying && !valid)}>
+        <Plus size={16} aria-hidden="true" /> {creating ? "创建中…" : retrying ? "重试原请求" : "创建私有群"}
+      </button>
+    </div>}>
+      <form id={formId} className="managedChatForm" onSubmit={event => void create(event)} onKeyDown={event => {
+        if (event.key === "Escape") closeComposer();
+      }}>
+        <p className="subtle managedChatMembers"><UsersRound size={16} aria-hidden="true" /> 成员：你和已连接的飞书机器人</p>
         <fieldset disabled={creating || retrying || !snapshot}>
           <label className="personaField managedChatFullWidth"><span>群名称</span>
-            <input required maxLength={60} value={name} onChange={event => setName(event.target.value)} />
+            <input autoFocus required maxLength={60} value={name} onChange={event => setName(event.target.value)} />
           </label>
           <label className="personaField"><span id={engineLabelId}>运行引擎</span>
             <select aria-labelledby={engineLabelId} value={engineId} onChange={event => { setEngineId(event.target.value); setModel(""); }}>
@@ -173,32 +200,23 @@ export function LarkManagedChatsPage() {
           </>}
         </fieldset>
         {createError && <div className="error" role="alert">{createError}</div>}
-        <div className="managedChatActions">
-          <button className="primaryButton" type="submit" disabled={creating || loading || !snapshot || (!retrying && !valid)}>
-            <UsersRound size={16} aria-hidden="true" /> {creating ? "创建中…" : retrying ? "重试原请求" : "创建私有群"}
-          </button>
-          {canEdit && <button className="ghostButton" type="button" onClick={() => {
-            attempt.current = null;
-            setCanEdit(false);
-            setCreateError("");
-          }}>修改表单</button>}
-          {announcement && <span className="subtle" role="status">{announcement}</span>}
-        </div>
       </form>
-    </section>
-    <section className="conversationSettingSection managedChatHistory" aria-labelledby="managed-chat-history-heading">
+    </DetailDrawer>}
+    <section className="managedChatHistory" aria-labelledby="managed-chat-history-heading">
       <div className="sectionHeader">
         <h3 id="managed-chat-history-heading">应用创建的群</h3>
-        <button type="button" className="iconButton" title="刷新群聊列表" aria-label="刷新群聊列表" disabled={loading || creating} onClick={refreshList}>
-          <RefreshCw size={16} aria-hidden="true" />
-        </button>
+        {snapshot && <span className="subtle">{snapshot.items.length} 个</span>}
       </div>
+      {announcement && <p className="notice" role="status">{announcement}</p>}
       {loading && <p className="subtle" role="status">正在读取飞书群聊…</p>}
       {loadError && <div className="error" role="alert">{loadError}</div>}
       {!loading && !loadError && snapshot?.items.length === 0 && <div className="emptyState">暂无应用创建的群聊。</div>}
-      {!!snapshot?.items.length && <ul className="managedChatList" aria-label="应用创建的群">
-        {snapshot.items.map(item => <ChatRow key={item.requestId} item={item} engines={engines} />)}
-      </ul>}
+      {!!snapshot?.items.length && <>
+        <div className="managedChatColumns" aria-hidden="true"><span>群聊</span><span>引擎 / 模型</span><span>人设</span><span>状态</span><span /></div>
+        <ul className="managedChatList" aria-label="应用创建的群">
+          {snapshot.items.map(item => <ChatRow key={item.requestId} item={item} engines={engines} />)}
+        </ul>
+      </>}
     </section>
   </section>;
 }

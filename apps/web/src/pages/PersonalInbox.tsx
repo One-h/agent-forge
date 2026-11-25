@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Inbox, RefreshCw, Send, Pause, Play, Check } from "lucide-react";
 import { OwnerMentionAssists } from "../components/OwnerMentionAssists";
+import { LarkWorkspaceHeader } from "../components/LarkWorkspaceHeader";
 import "./personalInbox.css";
 
 type Message = { id: number; chatType: string; chatName: string; senderName: string; content: string; sourceTime: string;
@@ -53,10 +54,10 @@ export function PersonalInboxPage() {
   const status = snapshot?.status;
   const messages = snapshot?.messages.filter(message => filter === "all" || !["sent", "dismissed", "owner_replied"].includes(message.status)) ?? [];
   return <section className="pageStack">
-    <div className="heroBand"><div><p className="eyebrow">小龙的消息代理</p><h2><Inbox size={23} />个人收件箱</h2>
-      <p className="subtle">接收别人私聊你、群里直接 @你的新消息。普通问候自动处理，其他消息先整理草稿并向你请示。</p></div>
-      <div className="actionGroup"><button className="ghostButton" disabled={busy} onClick={() => void perform(() => request("/sync", "POST", {}))}><RefreshCw size={16} />立即同步</button>
-        <button disabled={busy || !status} onClick={() => void perform(() => request("", "PATCH", { enabled: !status?.enabled }))}>{status?.enabled ? <Pause size={16} /> : <Play size={16} />}{status?.enabled ? "暂停接收" : "开启接收"}</button></div></div>
+    <LarkWorkspaceHeader title="个人收件箱" icon={<Inbox size={18} />} actions={<>
+      <button className="iconButton" title="立即同步" aria-label="立即同步" type="button" disabled={busy} onClick={() => void perform(() => request("/sync", "POST", {}))}><RefreshCw size={16} aria-hidden="true" /></button>
+      <button className={status?.enabled ? "ghostButton" : "primaryButton"} type="button" disabled={busy || !status} onClick={() => void perform(() => request("", "PATCH", { enabled: !status?.enabled }))}>{status?.enabled ? <Pause size={16} /> : <Play size={16} />}{status?.enabled ? "暂停接收" : "开启接收"}</button>
+    </>} />
     {error && <p role="alert" className="inboxWarning">{error}</p>}
     <div className="personalInboxStatus"><span>{status?.enabled ? status.busy ? "同步处理中" : "已开启 · 每分钟同步" : "未开启"}</span>
       <span>{status?.canSend ? "本人发送授权已就绪" : "以本人身份发送尚待授权"}</span>

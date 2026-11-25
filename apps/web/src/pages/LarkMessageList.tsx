@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, MessageSquareText, RefreshCw, Search, UserRound, X, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowUpRight, Info, MessageSquareText, RefreshCw, Search, UserRound, X, SlidersHorizontal } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type LarkConversation, type LarkMessageListItem } from "../api";
 import { formatTime } from "../i18n";
@@ -7,6 +7,7 @@ import { usePersistentState } from "../usePersistentState";
 import { LarkMessageDetailDrawer } from "./LarkMessageDetail";
 import { CopyableId } from "../components/CopyableId";
 import { LarkPersonaDrawer } from "./LarkPersonaDrawer";
+import { LarkRefreshButton, LarkWorkspaceHeader } from "../components/LarkWorkspaceHeader";
 
 const conversationLimit = 100;
 const messagePageLimit = 50;
@@ -47,6 +48,13 @@ function dateLabel(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "时间未知";
   return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(parsed);
+}
+
+function conversationTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  if (dateKey(value) === dateKey(new Date().toISOString())) return clockTime(value);
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(parsed);
 }
 
 function sortMessages(items: LarkMessageListItem[]): LarkMessageListItem[] {
@@ -96,6 +104,10 @@ export function LarkMessageList() {
   const [contactsHaveMore, setContactsHaveMore] = useState(false);
   const [namesRefreshing, setNamesRefreshing] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState("");
+  const [showConversation, setShowConversation] = useState(false);
+  const [showIdentity, setShowIdentity] = useState(false);
+  const chatTitleRef = useRef<HTMLHeadingElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [personaChat, setPersonaChat] = useState<{ chatId: string; chatType: "group" | "p2p"; title: string } | null>(null);
   const [messages, setMessages] = useState<LarkMessageListItem[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -248,6 +260,15 @@ export function LarkMessageList() {
     if (selectedContactId) void loadMessages(selectedContactId);
   };
 
+  const openConversation = (id: string) => {
+    setSelectedContactId(id);
+    setShowIdentity(false);
+    setShowConversation(true);
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      window.requestAnimationFrame(() => chatTitleRef.current?.focus());
+    }
+  };
+
   const switchChatType = (next: "p2p" | "group") => {
     if (next === chatType) return;
     contactsRequestRef.current += 1;
@@ -255,25 +276,23 @@ export function LarkMessageList() {
     setContacts([]);
     setSelectedContactId("");
     setMessages([]);
+    setShowConversation(false);
+    setShowIdentity(false);
     setQuery("");
     setDebouncedQuery("");
     setChatType(next);
   };
 
   return (
-    <section className="pageStack larkConversationPage">
-      <div className="heroBand conversationHero">
-        <div>
-          <p className="eyebrow">飞书接入</p>
-          <h2>飞书消息</h2>
-        </div>
-        <button className="ghostButton" type="button" onClick={refresh}><RefreshCw size={16} /> 刷新记录</button>
-      </div>
+    <section className="pageStack larkConversationPage" aria-labelledby="lark-messages-heading">
+      <LarkWorkspaceHeader id="lark-messages-heading" title="飞书消息" icon={<MessageSquareText size={18} />} actions={
+        <LarkRefreshButton label="刷新记录" onClick={refresh} />
+      } />
 
-      <div className="conversationWorkspace">
+      <div className={`conversationWorkspace${showConversation && selectedContact ? " showConversation" : ""}`}>
         <aside className="conversationMaster" aria-label="会话列表">
           <div className="conversationMasterHeader">
-            <div><h3>{chatType === "group" ? "群聊" : "联系人"}</h3><span>{contactTotal || contacts.length} 个会话</span></div>
+            <div><h3>会话</h3><span>{contactTotal || contacts.length} 个</span></div>
             <div className="segmentedControl" aria-label="会话类型">
               <button type="button" aria-pressed={chatType === "p2p"} className={chatType === "p2p" ? "active" : ""} onClick={() => switchChatType("p2p")}>单聊</button>
               <button type="button" aria-pressed={chatType === "group"} className={chatType === "group" ? "active" : ""} onClick={() => switchChatType("group")}>群聊</button>
@@ -281,7 +300,7 @@ export function LarkMessageList() {
             <label className="conversationSearch">
               <span className="visuallyHidden">搜索会话</span>
               <Search size={16} aria-hidden="true" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={chatType === "group" ? "搜索群名称或群聊 ID" : "搜索姓名、人员或会话 ID"} />
+              <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={chatType === "group" ? "搜索群聊" : "搜索联系人"} />
               {query && <button type="button" onClick={() => setQuery("")} aria-label="清空会话搜索"><X size={14} /></button>}
             </label>
           </div>
@@ -299,10 +318,10 @@ export function LarkMessageList() {
           ) : (
             <div className="conversationList">
               {contacts.map((contact) => (
-                <button className={`conversationContact ${contact.contactId === selectedContactId ? "active" : ""}`} type="button" key={contact.contactId} onClick={() => setSelectedContactId(contact.contactId)} aria-current={contact.contactId === selectedContactId ? "true" : undefined}>
+                <button className={`conversationContact ${contact.contactId === selectedContactId ? "active" : ""}`} type="button" key={contact.contactId} onClick={() => openConversation(contact.contactId)} aria-current={contact.contactId === selectedContactId ? "true" : undefined}>
                   <span className="conversationAvatar" aria-hidden="true">{initials(contact)}</span>
                   <span className="conversationContactBody">
-                    <span className="conversationContactTop"><strong>{contactTitle(contact)}</strong><time dateTime={contact.lastMessageAt}>{formatTime(contact.lastMessageAt)}</time></span>
+                    <span className="conversationContactTop"><strong>{contactTitle(contact)}</strong><time dateTime={contact.lastMessageAt} title={formatTime(contact.lastMessageAt)}>{conversationTime(contact.lastMessageAt)}</time></span>
                     <span className="conversationContactBottom"><span>{contact.lastMessagePreview || "暂无文本摘要"}</span><b aria-label={`${contact.messageCount} 条消息`}>{contact.messageCount}</b></span>
                   </span>
                 </button>
@@ -323,16 +342,27 @@ export function LarkMessageList() {
         <section className="conversationDetail" aria-label="聊天记录">
           {selectedContact ? (
             <header className="conversationDetailHeader">
+              <button className="iconButton conversationBack" type="button" title="返回会话列表" aria-label="返回会话列表" onClick={() => {
+                setShowConversation(false);
+                window.requestAnimationFrame(() => searchRef.current?.focus());
+              }}><ArrowLeft size={16} aria-hidden="true" /></button>
               <span className="conversationAvatar large" aria-hidden="true">{initials(selectedContact)}</span>
-              <span className="conversationHeaderInfo"><h3>{contactTitle(selectedContact)}</h3><small>{selectedContact.messageCount} 条消息 · {selectedContact.inboundCount} 入站 · {selectedContact.outboundCount} 出站</small>
-                {selectedContact.chatId && <CopyableId label={chatType === "group" ? "群聊 ID" : "飞书会话 ID"} value={selectedContact.chatId} />}
-                {chatType === "p2p" && <CopyableId label="人员 ID" value={selectedContact.contactId} />}
-                {(selectedContact.codexSessionIds ?? []).map((id) => <CopyableId key={id} label="Codex 会话 ID" value={id} />)}
+              <span className="conversationHeaderInfo"><h3 ref={chatTitleRef} tabIndex={-1} title={contactTitle(selectedContact)}>{contactTitle(selectedContact)}</h3>
+                <small>{chatType === "group" ? "群聊" : "私聊"} · {selectedContact.messageCount} 条消息</small>
               </span>
-              <button type="button" className="ghostButton personaOpenButton" disabled={!selectedContact.chatId} onClick={() => selectedContact.chatId && setPersonaChat({ chatId: selectedContact.chatId, chatType, title: contactTitle(selectedContact) })}><SlidersHorizontal size={15} /> 设置</button>
+              <div className="conversationHeaderActions">
+                <button type="button" className="iconButton" title="会话信息" aria-label="会话信息" aria-expanded={showIdentity}
+                  aria-controls="lark-conversation-identity" onClick={() => setShowIdentity(value => !value)}><Info size={16} aria-hidden="true" /></button>
+                <button type="button" className="iconButton" title="会话设置" aria-label="会话设置" disabled={!selectedContact.chatId} onClick={() => selectedContact.chatId && setPersonaChat({ chatId: selectedContact.chatId, chatType, title: contactTitle(selectedContact) })}><SlidersHorizontal size={16} aria-hidden="true" /></button>
+              </div>
             </header>
           ) : <div className="conversationDetailHeader placeholder"><span>聊天记录</span></div>}
-
+          {selectedContact && showIdentity && <div className="conversationIdentity" id="lark-conversation-identity">
+            <small>{selectedContact.inboundCount} 入站 · {selectedContact.outboundCount} 出站</small>
+            {selectedContact.chatId && <CopyableId label={chatType === "group" ? "群聊 ID" : "飞书会话 ID"} value={selectedContact.chatId} />}
+            {chatType === "p2p" && <CopyableId label="人员 ID" value={selectedContact.contactId} />}
+            {(selectedContact.codexSessionIds ?? []).map((id) => <CopyableId key={id} label="Codex 会话 ID" value={id} />)}
+          </div>}
           <div className="conversationTimeline" ref={timelineRef} aria-busy={messagesLoading}>
             {messagesLoading ? <MessageSkeleton /> : messagesError && messages.length === 0 ? (
               <div className="conversationState errorState" role="alert">
@@ -354,11 +384,10 @@ export function LarkMessageList() {
                   {group.items.map((message) => (
                     <div className={`messageBubbleRow ${message.direction}`} key={message.id}>
                       <div className="messageEnvelope">
-                      <span className="messageAuthor">{message.direction === "outbound" ? `机器人 → ${message.recipientName || message.recipientId || "当前会话"}` : message.sender_name || message.sender_id || "未知发送人"}</span>
+                      <span className="messageAuthor">{message.direction === "outbound" ? (message.sender_name || "飞书机器人") : message.sender_name || message.sender_id || "未知发送人"}</span>
                       <button className="messageBubble" type="button" onClick={() => navigate(`/lark-messages/${message.id}`)} aria-label={`${message.direction === "outbound" ? "出站" : "入站"}消息，${clockTime(message.messageAt)}，打开详情`}>
-                        <span className="messageDirection">{message.direction === "outbound" ? "出站" : "入站"}</span>
                         <span className="messageBody">{messageText(message)}</span>
-                        <span className="messageMeta">{message.direction === "outbound" && <span>{outboundSourceText(message.outboundSource)}</span>}<time dateTime={message.messageAt}>{clockTime(message.messageAt)}</time></span>
+                        <span className="messageMeta">{message.direction === "outbound" && <span>{outboundSourceText(message.outboundSource)}</span>}<time dateTime={message.messageAt}>{clockTime(message.messageAt)}</time><ArrowUpRight size={12} aria-hidden="true" /></span>
                       </button>
                       </div>
                     </div>

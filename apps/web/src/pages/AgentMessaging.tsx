@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { MessageSquare, RefreshCw } from "lucide-react";
+import { Route } from "lucide-react";
+import { LarkRefreshButton, LarkWorkspaceHeader } from "../components/LarkWorkspaceHeader";
 import "./personalInbox.css";
 type Outreach = {id:string;sourceThreadId:string;sourceLabel:string;recipientId:string;identity:string;chatId:string;status:string;text:string;error:string|null};
 type Reply = {id:number;payload:string;candidates:string;outreachId:string|null;status:string;error:string|null;version:number};
@@ -27,7 +28,9 @@ export function AgentMessagingPage(){
   const load=async()=>setData(await request<Snapshot>());
   useEffect(()=>{void load().catch(error=>setError(String(error)));const timer=setInterval(()=>{if(!document.hidden)void load().catch(error=>setError(String(error)));},5000);return()=>clearInterval(timer);},[]);
   const perform=async(action:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);setError("");try{await action();await load();}catch(error){setError(String(error));}finally{setBusy(false);}};
-  return <section className="pageStack"><div className="heroBand"><div><p className="eyebrow">龙小祝 · 跨会话协作</p><h2><MessageSquare size={23}/>Agent 消息路由</h2><p className="subtle">引用回复按原消息归属；私聊只有一个有效来源会话时自动交回，多个来源或归属冲突时由你分配。</p></div><button disabled={busy} onClick={()=>void perform(load)}><RefreshCw size={16}/>刷新</button></div>
+  return <section className="pageStack"><LarkWorkspaceHeader title="Agent 消息路由" icon={<Route size={18} />} actions={
+    <LarkRefreshButton label="刷新消息路由" disabled={busy} onClick={()=>void perform(load)} />
+  } />
     {error&&<p role="alert" className="inboxWarning">{error}</p>}
     <div className="personalInboxStatus"><span>{data.outreaches.filter(row=>row.status==="open").length} 个协作请求进行中</span><span>{data.replies.filter(row=>row.status==="needs_owner").length} 条回复需要确认归属</span><label><input type="checkbox" checked={all} onChange={event=>setAll(event.target.checked)}/>显示已投递记录</label></div>
     <p className="subtle">同一 Codex 服务管理的会话可自动接收；其他会话通过 lark-agent-messaging skill 的等待工具领取。外部回复只作为消息数据传入。</p>
