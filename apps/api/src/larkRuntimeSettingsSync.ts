@@ -19,6 +19,7 @@ export const larkRuntimeSettingsSchema = z.object({
   repliesEnabled: z.boolean(),
   interimRepliesEnabled: z.boolean(),
   ownerMessageFastPathEnabled: z.boolean(),
+  taskOrchestrationGlobalEnabled: z.boolean(),
   executionReceiptsEnabled: z.boolean(),
   codexModel: model,
   reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]),
@@ -47,6 +48,11 @@ export const larkRuntimeSettingsSchema = z.object({
 }).strict();
 
 export type RuntimeSettingsPatch = Partial<z.infer<typeof larkRuntimeSettingsSchema>>;
+export const larkRuntimeControlPatchSchema = larkRuntimeSettingsSchema.pick({
+  interimRepliesEnabled: true,
+  ownerMessageFastPathEnabled: true,
+  taskOrchestrationGlobalEnabled: true
+}).partial();
 type RuntimeSettingKey = keyof RuntimeSettingsPatch;
 type LarkSettingKey = Extract<keyof AppSettings, `lark${string}`>;
 
@@ -95,6 +101,18 @@ export function larkAppSettingsPatch(settings: Partial<AppSettings>): RuntimeSet
 
 function settingsRecord(remote: unknown): Record<string, unknown> {
   return remote && typeof remote === "object" && !Array.isArray(remote) ? remote as Record<string, unknown> : {};
+}
+
+export function readLarkRuntimeControls(remote: unknown) {
+  const values = settingsRecord(remote);
+  const flag = (key: string) => typeof values[key] === "boolean" ? values[key] as boolean : null;
+  return {
+    interimRepliesEnabled: flag("interimRepliesEnabled"),
+    ownerMessageFastPathEnabled: flag("ownerMessageFastPathEnabled"),
+    taskOrchestrationGlobalEnabled: flag("taskOrchestrationGlobalEnabled"),
+    taskOrchestrationEnabled: flag("taskOrchestrationEnabled"),
+    ownerApproverConfigured: typeof values.approverId === "string" ? Boolean(values.approverId.trim()) : null
+  };
 }
 
 export function readableLarkRuntimeSetting(remote: unknown, key: RuntimeSettingKey): boolean {
@@ -167,6 +185,9 @@ export async function syncLarkRuntimeSettings(
   let current: Record<string, unknown>;
   try { current = settingsRecord(await larkAgentProxyFetch("/v1/settings")); }
   catch { throw failure("Lark Agent runtime settings are unavailable"); }
+  if (patch.taskOrchestrationGlobalEnabled === true && current.taskOrchestrationEnabled !== true) {
+    throw failure("Lark Agent has not loaded the task orchestration module", 409);
+  }
   const previous: RuntimeSettingsPatch = {};
   const defaultOwnerAssist = patch.ownerMentionAssistEnabled === false && patch.ownerMentionAssistOwnerId === "";
   for (const key of Object.keys(patch) as RuntimeSettingKey[]) {

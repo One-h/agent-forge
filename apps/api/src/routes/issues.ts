@@ -23,7 +23,7 @@ import { rescheduleGiteaSyncTimer } from "../worker.js";
 import { defaultLarkAcknowledgeReactionEmoji, isLarkReactionEmojiType } from "../larkReactionEmojis.js";
 import { apiErrorCodes } from "../errorCodes.js";
 import { LarkAgentResponseError, larkAgentFetch, larkAgentProxyFetch, larkAgentRequest } from "../larkAgentIntegration.js";
-import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, ownerMentionAssistBotIdsSchema, ownerMentionAssistOwnerIdSchema, ownerMentionAssistSettingsSchema, readLarkAppSettings, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
+import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, larkRuntimeControlPatchSchema, ownerMentionAssistBotIdsSchema, ownerMentionAssistOwnerIdSchema, ownerMentionAssistSettingsSchema, readLarkAppSettings, readLarkRuntimeControls, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
 import { requireLarkHostAuthorization } from "../larkHostAuthorization.js";
 
 const repairBodySchema = z.object({
@@ -820,6 +820,7 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
       },
       appSettings,
       larkSettingsKnown,
+      larkRuntimeControls: readLarkRuntimeControls(config.larkAgentToken ? remoteLarkSettings : null),
       prompts: config.larkAgentUrl
         ? await (async () => {
             const defaults = configurablePromptSettings();
@@ -837,6 +838,17 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
     try { return await larkAgentProxyFetch("/v1/models"); }
     catch (error) { return sendLarkAgentProxyError(reply, request, error); }
   });
+
+  app.patch("/api/lark/runtime-controls", async (request, reply) => withLarkRuntimeSettingsLock(async () => {
+    if (!isLocalForgeRequest(request)) return reply.code(403).send({ error: "Lark runtime controls require local Forge" });
+    const parsed = larkRuntimeControlPatchSchema.safeParse(request.body);
+    if (!parsed.success || Object.keys(parsed.data).length === 0) {
+      return reply.code(400).send({ error: "Expected at least one supported Lark runtime control" });
+    }
+    if (!config.larkAgentUrl || !config.larkAgentToken) return reply.code(409).send({ error: "Lark Agent or runtime credential is not configured" });
+    await syncLarkRuntimeSettings(parsed.data);
+    return parsed.data;
+  }));
 
   app.patch("/api/settings", async (request, reply) => withLarkRuntimeSettingsLock(async () => {
     const parsed = settingsPatchSchema.safeParse(request.body ?? {});

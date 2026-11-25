@@ -2875,7 +2875,7 @@ test("all global Lark settings map to one PATCH and independent GET before the l
     const saved = getAppSettings();
     assert.deepEqual(saved, { ...before, ...payload, larkOwnerMentionAssistBotIds: ["ou_botB", "ou_botA"], larkGroupSpontaneousChatIds: ["oc_b", "oc_a"], larkGroupMessageReactionChatIds: ["oc_b", "oc_a"] });
     assert.equal((db.prepare("SELECT count(*) AS count FROM local_audit_events WHERE action = 'settings.updated'").get() as { count: number }).count, 1);
-    assert.equal(Object.keys(larkRuntimeSettingsSchema.shape).length, 29);
+    assert.equal(Object.keys(larkRuntimeSettingsSchema.shape).length, 30);
     assert.equal(Object.keys(expected).length, Object.keys(saved).filter((key) => key.startsWith("lark")).length);
   } finally { config.larkAgentUrl = previousUrl; globalThis.fetch = originalFetch; await app.close(); }
 });
@@ -3269,6 +3269,64 @@ test("helper supports the remaining Agent-only writable fields without adding Fo
     assert.equal(Object.hasOwn(getAppSettings(), "larkInterimRepliesEnabled"), false);
     assert.equal(Object.hasOwn(getAppSettings(), "larkOwnerMessageFastPathEnabled"), false);
   } finally { config.larkAgentUrl = previousUrl; globalThis.fetch = originalFetch; }
+});
+
+test("Forge exposes only supported Agent runtime controls and uses the Agent as the single writer", async () => {
+  resetTables();
+  const previousUrl = config.larkAgentUrl, previousToken = config.larkAgentToken, originalFetch = globalThis.fetch;
+  config.larkAgentUrl = "http://lark-agent.test";
+  config.larkAgentToken = "fixture-runtime-token";
+  const app = Fastify({ logger: false });
+  await app.register(issueRoutes);
+  const local = getAppSettings();
+  let remote: Record<string, unknown> = {
+    ...completeLarkRuntimeSettings(), taskOrchestrationEnabled: true, taskOrchestrationGlobalEnabled: false
+  };
+  const calls: string[] = [];
+  const writes: Array<Record<string, unknown>> = [];
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).endsWith("/v1/settings")) return new Response("{}");
+    const method = init?.method ?? "GET";
+    calls.push(method);
+    if (method === "PATCH") {
+      const body = JSON.parse(String(init?.body));
+      writes.push(body);
+      remote = { ...remote, ...body };
+    }
+    return new Response(JSON.stringify(remote));
+  };
+  const patch = (payload: object) => app.inject({ method: "PATCH", url: "/api/lark/runtime-controls", payload });
+  const controls = async () => (await app.inject("/api/settings")).json().larkRuntimeControls;
+  try {
+    assert.deepEqual(await controls(), { interimRepliesEnabled: true, ownerMessageFastPathEnabled: true,
+      taskOrchestrationEnabled: true, taskOrchestrationGlobalEnabled: false, ownerApproverConfigured: true });
+    assert.equal((await patch({})).statusCode, 400);
+    assert.equal((await patch({ trustedExecutionEnabled: true })).statusCode, 400);
+    assert.equal((await app.inject({ method: "PATCH", url: "/api/lark/runtime-controls",
+      headers: { origin: "https://foreign.example" }, payload: { interimRepliesEnabled: true } })).statusCode, 403);
+    calls.length = 0;
+    const requested = { taskOrchestrationGlobalEnabled: true, interimRepliesEnabled: false, ownerMessageFastPathEnabled: false };
+    const saved = await patch(requested);
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.deepEqual(saved.json(), requested);
+    assert.deepEqual(calls, ["GET", "PATCH", "GET"]);
+    assert.deepEqual(writes, [requested]);
+    assert.equal((await controls()).taskOrchestrationGlobalEnabled, true);
+    assert.equal(remote.turnAutoApprovalEnabled, true);
+    assert.deepEqual(getAppSettings(), local);
+
+    remote.taskOrchestrationEnabled = false;
+    assert.equal((await patch({ taskOrchestrationGlobalEnabled: false })).statusCode, 200);
+    assert.equal((await patch({ taskOrchestrationGlobalEnabled: true })).statusCode, 409);
+    delete remote.taskOrchestrationGlobalEnabled;
+    delete remote.taskOrchestrationEnabled;
+    assert.equal((await controls()).taskOrchestrationGlobalEnabled, null);
+    assert.equal((await patch({ taskOrchestrationGlobalEnabled: true })).statusCode, 409);
+    assert.equal(writes.length, 2);
+    config.larkAgentUrl = "";
+    assert.equal((await patch({ interimRepliesEnabled: true })).statusCode, 409);
+    assert.deepEqual(getAppSettings(), local);
+  } finally { config.larkAgentUrl = previousUrl; config.larkAgentToken = previousToken; globalThis.fetch = originalFetch; await app.close(); }
 });
 
 test("trusted execution saves confirmed false, reads the Agent value and refuses unsupported or ignored writes", async () => {

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Download, FileText, FolderGit2, HardDrive, History, KeyRound, Power, RefreshCw, Save, Settings2, ShieldCheck, Stethoscope, Trash2, Upload } from "lucide-react";
-import { api, type LarkCodexModel, type LaunchAgentStatus, type LocalAuditEvent, type LocalBackup, type LocalDataUsage, type LocalDiagnostic, type LocalRepository, type PromptKey, type PromptSettings, type RuntimeConfig, type Settings } from "../api";
+import { api, type LarkCodexModel, type LarkWritableRuntimeControl, type LaunchAgentStatus, type LocalAuditEvent, type LocalBackup, type LocalDataUsage, type LocalDiagnostic, type LocalRepository, type PromptKey, type PromptSettings, type RuntimeConfig, type Settings } from "../api";
 import { CompanyScopeSettings } from "../components/CompanyScopeSettings";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { statusText } from "../i18n";
@@ -67,7 +67,7 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [contactsSyncing, setContactsSyncing] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
-  const [settingsSection, setSettingsSection] = usePersistentState<"common" | "automation" | "prompts" | "maintenance">("autofix.settings.section", "common");
+  const [settingsSection, setSettingsSection] = usePersistentState<"common" | "automation" | "lark" | "prompts" | "maintenance">("autofix.settings.section", "common");
   const [promptDrafts, setPromptDrafts] = useState<PromptSettings | null>(null);
   const [activePromptKey, setActivePromptKey] = useState<PromptKey>("larkAssistant");
   const [confirmation, setConfirmation] = useState<{
@@ -128,7 +128,7 @@ export function SettingsPage() {
   };
 
   useEffect(() => {
-    if (settingsSection === "automation") void refreshModelCatalog();
+    if (settingsSection === "lark") void refreshModelCatalog();
   }, [settingsSection]);
 
   const updateSetting = async (patch: Partial<Settings["appSettings"]>) => {
@@ -164,6 +164,24 @@ export function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const updateLarkControl = async (key: LarkWritableRuntimeControl, value: boolean) => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const confirmed = await api.updateLarkRuntimeControls({ [key]: value });
+      if (confirmed[key] !== value) throw new Error("飞书设置未确认，请刷新后核对。");
+      setSettings(current => current?.larkRuntimeControls
+        ? { ...current, larkRuntimeControls: { ...current.larkRuntimeControls, [key]: value } } : current);
+      setNotice("飞书设置已保存。");
+    } catch (err) {
+      setError(String(err));
+      const latest = await api.settings().catch(() => null);
+      setSettings(current => current && { ...current, larkRuntimeControls: latest?.larkRuntimeControls });
+    } finally { setSaving(false); }
   };
 
   const savePollInterval = async () => {
@@ -463,6 +481,7 @@ export function SettingsPage() {
   const showCustomModelInput = modelCatalog !== null && (modelCatalog.length === 0 || customModelMode || !selectedCatalogModel);
   const showCustomApprovalModelInput = !modelCatalog?.length || customApprovalModelMode || !modelCatalog.some((model) => model.id === settings.appSettings.larkTurnAutoApprovalModel);
   const approvalModelDisabled = saving || !settings.larkCodexResponder.turnAutoApprovalModelConfigurable;
+  const larkControls = settings.larkRuntimeControls;
   const assistBotIds = [...new Set(ownerMentionAssistBotIds.split(/[,，;；\s]+/).filter(Boolean))];
   const assistBotIdsValid = assistBotIds.length <= 100 && assistBotIds.every(id => id.length <= 200 && /^ou_[A-Za-z0-9]+$/.test(id));
   const assistBotIdsChanged = JSON.stringify([...assistBotIds].sort()) !== JSON.stringify([...(settings.appSettings.larkOwnerMentionAssistBotIds ?? [])].sort());
@@ -489,10 +508,11 @@ export function SettingsPage() {
         <div className="segmentedControl" aria-label="设置分类">
           <button className={settingsSection === "common" ? "active" : ""} onClick={() => setSettingsSection("common")} type="button">常用</button>
           <button className={settingsSection === "automation" ? "active" : ""} onClick={() => setSettingsSection("automation")} type="button">自动化</button>
+          <button className={settingsSection === "lark" ? "active" : ""} onClick={() => setSettingsSection("lark")} type="button">飞书</button>
           <button className={settingsSection === "prompts" ? "active" : ""} onClick={() => setSettingsSection("prompts")} type="button">提示词</button>
           <button className={settingsSection === "maintenance" ? "active" : ""} onClick={() => setSettingsSection("maintenance")} type="button">本机维护</button>
         </div>
-        <span className="subtle">{settingsSection === "common" ? "连接服务、凭据、仓库和同步策略" : settingsSection === "automation" ? "控制自动评审、Issue 修复和飞书执行权限" : settingsSection === "prompts" ? "编辑飞书与工程任务的 Codex 指令" : "检查环境、管理常驻服务和本机数据"}</span>
+        <span className="subtle">{settingsSection === "common" ? "连接服务、凭据、仓库和同步策略" : settingsSection === "automation" ? "控制自动评审和 Issue 修复" : settingsSection === "lark" ? "派工、消息与审批" : settingsSection === "prompts" ? "编辑飞书与工程任务的 Codex 指令" : "检查环境、管理常驻服务和本机数据"}</span>
       </div>
       {!settings.setupComplete && (
         <section className="panel onboardingPanel">
@@ -636,7 +656,32 @@ export function SettingsPage() {
           </div>
         </div>}
 
-        {settingsSection === "automation" && <div className="panel">
+        {settingsSection === "lark" && <section className="panel" aria-labelledby="lark-runtime-controls-heading">
+          <h3 id="lark-runtime-controls-heading">派工与回复</h3>
+          <dl className="meta wide">
+            <dt>派工模块</dt><dd>{larkControls?.taskOrchestrationEnabled === true ? "已加载" : larkControls?.taskOrchestrationEnabled === false ? "未加载" : "状态未知"}</dd>
+            <dt>派工范围</dt><dd>{larkControls?.taskOrchestrationGlobalEnabled === true ? "群聊与私聊" : larkControls?.taskOrchestrationGlobalEnabled === false ? "部署白名单" : "状态未知"}</dd>
+          </dl>
+          <SettingToggle checked={larkControls?.taskOrchestrationGlobalEnabled === true}
+            disabled={saving || typeof larkControls?.taskOrchestrationGlobalEnabled !== "boolean" || (larkControls.taskOrchestrationEnabled !== true && !larkControls.taskOrchestrationGlobalEnabled)}
+            label="全局派工（群聊与私聊）" onChange={checked => void updateLarkControl("taskOrchestrationGlobalEnabled", checked)} />
+          <SettingToggle checked={larkControls?.interimRepliesEnabled === true}
+            disabled={saving || typeof larkControls?.interimRepliesEnabled !== "boolean"}
+            label="发送过程回复" onChange={checked => void updateLarkControl("interimRepliesEnabled", checked)} />
+          <SettingToggle checked={larkControls?.ownerMessageFastPathEnabled === true}
+            disabled={saving || typeof larkControls?.ownerMessageFastPathEnabled !== "boolean" || (larkControls.ownerApproverConfigured !== true && !larkControls.ownerMessageFastPathEnabled)}
+            label="本人私聊发信快速通道" onChange={checked => {
+              if (!checked) return void updateLarkControl("ownerMessageFastPathEnabled", false);
+              setConfirmation({ title: "开启本人私聊发信快速通道",
+                description: "本人在私聊中明确指定单个内部联系人，且发信内容命中普通消息白名单时，可免审批。其他发送仍按原规则处理。",
+                confirmLabel: "确认开启", onConfirm: () => updateLarkControl("ownerMessageFastPathEnabled", true) });
+            }} />
+          {typeof larkControls?.interimRepliesEnabled !== "boolean" && <p className="subtle" role="status">过程回复状态未确认。</p>}
+          {typeof larkControls?.ownerMessageFastPathEnabled !== "boolean" && <p className="subtle" role="status">私聊发信快速通道状态未确认。</p>}
+          {larkControls?.ownerApproverConfigured === false && <p className="subtle" role="status">尚未配置飞书审批接收人。</p>}
+        </section>}
+
+        {settingsSection === "lark" && <div className="panel">
           <h3>飞书消息</h3>
           <dl className="meta wide">
             <dt>监听器</dt><dd><span className={`badge ${settings.larkMessageListener.running ? "done" : settings.appSettings.larkMessageListenerEnabled ? "queued" : "blocked"}`}>{settings.larkMessageListener.running ? "运行中" : settings.appSettings.larkMessageListenerEnabled ? "启动中" : "关闭"}</span></dd>

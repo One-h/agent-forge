@@ -192,7 +192,14 @@ export type Settings = {
     pollIntervalMs: number;
   };
   larkSettingsKnown?: Partial<Record<keyof Settings["appSettings"], boolean>>;
+  larkRuntimeControls?: LarkRuntimeControls;
   prompts: PromptSettings;
+};
+
+export type LarkWritableRuntimeControl = "interimRepliesEnabled" | "ownerMessageFastPathEnabled" | "taskOrchestrationGlobalEnabled";
+export type LarkRuntimeControls = Record<LarkWritableRuntimeControl, boolean | null> & {
+  taskOrchestrationEnabled: boolean | null;
+  ownerApproverConfigured: boolean | null;
 };
 
 export type PromptKey = "larkAssistant" | "prReview" | "issueTriage" | "issueImplementation";
@@ -721,6 +728,10 @@ export const api = {
   pulls: (scope: PullScope = "relevant") => request<Issue[]>(`/api/pulls?scope=${encodeURIComponent(scope)}`),
   settings: () => request<Settings>("/api/settings"),
   larkModels: () => request<{ models: LarkCodexModel[] }>("/api/lark/models"),
+  updateLarkRuntimeControls: (patch: Partial<Record<LarkWritableRuntimeControl, boolean>>) =>
+    request<Partial<Record<LarkWritableRuntimeControl, boolean>>>("/api/lark/runtime-controls", {
+      method: "PATCH", body: JSON.stringify(patch)
+    }),
   updateSettings: (patch: Partial<Settings["appSettings"]>) =>
     request<Settings["appSettings"]>("/api/settings", {
       method: "PATCH",
