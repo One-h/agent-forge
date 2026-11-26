@@ -25,6 +25,7 @@ import { apiErrorCodes } from "../errorCodes.js";
 import { LarkAgentResponseError, larkAgentFetch, larkAgentProxyFetch, larkAgentRequest } from "../larkAgentIntegration.js";
 import { approvalDataSourcesSchema, larkAppSettingFields, larkAppSettingsPatch, larkRuntimeControlPatchSchema, ownerMentionAssistBotIdsSchema, ownerMentionAssistOwnerIdSchema, ownerMentionAssistSettingsSchema, readLarkAppSettings, readLarkRuntimeControls, syncLarkRuntimeSettings, withLarkRuntimeSettingsLock } from "../larkRuntimeSettingsSync.js";
 import { requireLarkHostAuthorization } from "../larkHostAuthorization.js";
+import { registerLarkHostReceiptRoutes, runLarkHostCapability } from "../larkHostReceipts.js";
 
 const repairBodySchema = z.object({
   mode: z.enum(["review_only", "issue_triage", "issue_implementation", "reviewed_pr"]).default("issue_triage"),
@@ -581,6 +582,55 @@ const managedChatsSchema = z.object({
 });
 const managedChatResultSchema = z.object({ item: managedChatItemSchema });
 
+async function executeLarkAgentCapability(app: FastifyInstance, id: string, body: unknown) {
+  const { input } = larkAgentCapabilitySchema.parse(body);
+  if (id === "forge.todo.create") {
+    const title = typeof input.title === "string" ? input.title.trim() : "";
+    if (!title) return { httpStatus: 400, body: { error: "title is required" } };
+    const response = await app.inject({ method: "POST", url: "/api/todos", payload: { title, description: typeof input.description === "string" ? input.description : null, codexSessionId: typeof input.codexSessionId === "string" ? input.codexSessionId : null } });
+    const todo = response.json() as Record<string, unknown>;
+    return { httpStatus: response.statusCode, body: { ...todo, _receipt: { status: "verified", summary: `已创建待办：${String(todo.title ?? title)}`, evidence: todo.id ? [`todo_id: ${String(todo.id)}`] : [] } } };
+  }
+  if (id === "forge.deploy.inspect" || id === "forge.deploy.production") {
+    const deployment = larkAgentDeployInputSchema.parse(input);
+    if (id === "forge.deploy.production" && !deployment.expectedRevision) return { httpStatus: 400, body: { error: "expectedRevision from forge.deploy.inspect is required" } };
+    const workspaceRoot = config.workspaceRoot;
+    const script = getAppSettings().deploymentAdapterPath;
+    if (!workspaceRoot || !script || !fs.existsSync(script) || !fs.statSync(script).isFile()) return { httpStatus: 409, body: { error: "A local deployment adapter must be configured before using deployment capabilities" } };
+    const apps = Array.isArray(deployment.apps) ? deployment.apps : deployment.apps.split(",").map((value) => value.trim()).filter(Boolean);
+    const args = [script, "--repo", deployment.repo, "--app", apps.join(","), "--timeout", String(deployment.timeout ?? 300), ...(deployment.expectedRevision ? ["--expected-revision", deployment.expectedRevision] : []), ...(id === "forge.deploy.production" ? ["--execute"] : [])];
+    const result = await new Promise<{ status: number | null; stdout: string; stderr: string; error: string | null }>((resolve) => {
+      const child = spawn(process.execPath, args, { cwd: workspaceRoot, stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = ""; let stderr = "";
+      child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+      child.on("error", (error) => resolve({ status: null, stdout, stderr, error: error.message }));
+      child.on("close", (status) => resolve({ status, stdout, stderr, error: null }));
+    });
+    if (result.status !== 0) return { httpStatus: 409, body: { error: result.error ?? (result.stderr.trim() || "production deploy command failed"), stdout: result.stdout.trim() } };
+    let output: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(result.stdout) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid adapter object");
+      output = parsed as Record<string, unknown>;
+    } catch { return { httpStatus: 409, body: { error: "Deployment adapter must return a JSON object" } }; }
+    const verified = output.verified === true || output.fresh === true && ["deployed", "verified-noop"].includes(String(output.result));
+    const appNames = apps.join(",");
+    return { httpStatus: 200, body: {
+      ...output,
+      result: output.result ?? (id === "forge.deploy.production" ? "deployed" : "inspected"),
+      _receipt: id === "forge.deploy.production"
+        ? { status: verified ? "verified" : "executed", summary: verified ? `生产发布已执行并完成适配脚本验证：${appNames}` : `部署适配脚本已执行，尚未确认验证结果：${appNames}`, evidence: [`revision: ${deployment.expectedRevision}`, `apps: ${appNames}`] }
+        : { status: "queried", summary: `已检查生产发布目标：${appNames}`, evidence: [`repo: ${deployment.repo}`, `apps: ${appNames}`] }
+    } };
+  }
+  const issueId = typeof input.issueId === "number" ? input.issueId : Number(input.issueId);
+  if (!Number.isInteger(issueId) || issueId <= 0) return { httpStatus: 400, body: { error: "issueId is required" } };
+  const response = await app.inject({ method: "POST", url: `/api/issues/${issueId}/repair`, payload: { mode: id === "forge.gitea.review-pr" ? "review_only" : "issue_triage", repoHint: typeof input.repoHint === "string" ? input.repoHint : undefined } });
+  const job = response.json() as Record<string, unknown>;
+  return { httpStatus: response.statusCode, body: { ...job, _receipt: { status: "executed", summary: id === "forge.gitea.review-pr" ? "已发起 PR 评审任务；任务结果尚未完成验证。" : "已发起 Issue 分析任务；任务结果尚未完成验证。", evidence: job.id ? [`job_id: ${String(job.id)}`] : [] } } };
+}
+
 export async function issueRoutes(app: FastifyInstance): Promise<void> {
   app.route({
     method: ["GET", "POST"],
@@ -736,54 +786,10 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
       }
     });
   }
+  registerLarkHostReceiptRoutes(app);
   app.post("/api/lark-agent/capabilities/:id", { preHandler: requireLarkHostAuthorization }, async (request, reply) => {
     const { id } = z.object({ id: z.enum(["forge.gitea.review-pr", "forge.gitea.triage-issue", "forge.todo.create", "forge.deploy.inspect", "forge.deploy.production"]) }).parse(request.params);
-    const { input } = larkAgentCapabilitySchema.parse(request.body ?? {});
-    if (id === "forge.todo.create") {
-      const title = typeof input.title === "string" ? input.title.trim() : "";
-      if (!title) return reply.code(400).send({ error: "title is required" });
-      const response = await app.inject({ method: "POST", url: "/api/todos", payload: { title, description: typeof input.description === "string" ? input.description : null, codexSessionId: typeof input.codexSessionId === "string" ? input.codexSessionId : null } });
-      const todo = response.json() as Record<string, unknown>;
-      return reply.code(response.statusCode).send({ ...todo, _receipt: { status: "verified", summary: `已创建待办：${String(todo.title ?? title)}`, evidence: todo.id ? [`todo_id: ${String(todo.id)}`] : [] } });
-    }
-    if (id === "forge.deploy.inspect" || id === "forge.deploy.production") {
-      const deployment = larkAgentDeployInputSchema.parse(input);
-      if (id === "forge.deploy.production" && !deployment.expectedRevision) return reply.code(400).send({ error: "expectedRevision from forge.deploy.inspect is required" });
-      const workspaceRoot = config.workspaceRoot;
-      const script = getAppSettings().deploymentAdapterPath;
-      if (!workspaceRoot || !script || !fs.existsSync(script) || !fs.statSync(script).isFile()) return reply.code(409).send({ error: "A local deployment adapter must be configured before using deployment capabilities" });
-      const apps = Array.isArray(deployment.apps) ? deployment.apps : deployment.apps.split(",").map((value) => value.trim()).filter(Boolean);
-      const args = [script, "--repo", deployment.repo, "--app", apps.join(","), "--timeout", String(deployment.timeout ?? 300), ...(deployment.expectedRevision ? ["--expected-revision", deployment.expectedRevision] : []), ...(id === "forge.deploy.production" ? ["--execute"] : [])];
-      const result = await new Promise<{ status: number | null; stdout: string; stderr: string; error: string | null }>((resolve) => {
-        const child = spawn(process.execPath, args, { cwd: workspaceRoot, stdio: ["ignore", "pipe", "pipe"] });
-        let stdout = ""; let stderr = "";
-        child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-        child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-        child.on("error", (error) => resolve({ status: null, stdout, stderr, error: error.message }));
-        child.on("close", (status) => resolve({ status, stdout, stderr, error: null }));
-      });
-      if (result.status !== 0) return reply.code(409).send({ error: result.error ?? (result.stderr.trim() || "production deploy command failed"), stdout: result.stdout.trim() });
-      let output: Record<string, unknown>;
-      try {
-        const parsed = JSON.parse(result.stdout) as unknown;
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid adapter object");
-        output = parsed as Record<string, unknown>;
-      } catch { return reply.code(409).send({ error: "Deployment adapter must return a JSON object" }); }
-      const verified = output.verified === true || output.fresh === true && ["deployed", "verified-noop"].includes(String(output.result));
-      const appNames = apps.join(",");
-      return reply.send({
-        ...output,
-        result: output.result ?? (id === "forge.deploy.production" ? "deployed" : "inspected"),
-        _receipt: id === "forge.deploy.production"
-          ? { status: verified ? "verified" : "executed", summary: verified ? `生产发布已执行并完成适配脚本验证：${appNames}` : `部署适配脚本已执行，尚未确认验证结果：${appNames}`, evidence: [`revision: ${deployment.expectedRevision}`, `apps: ${appNames}`] }
-          : { status: "queried", summary: `已检查生产发布目标：${appNames}`, evidence: [`repo: ${deployment.repo}`, `apps: ${appNames}`] }
-      });
-    }
-    const issueId = typeof input.issueId === "number" ? input.issueId : Number(input.issueId);
-    if (!Number.isInteger(issueId) || issueId <= 0) return reply.code(400).send({ error: "issueId is required" });
-    const response = await app.inject({ method: "POST", url: `/api/issues/${issueId}/repair`, payload: { mode: id === "forge.gitea.review-pr" ? "review_only" : "issue_triage", repoHint: typeof input.repoHint === "string" ? input.repoHint : undefined } });
-    const job = response.json() as Record<string, unknown>;
-    return reply.code(response.statusCode).send({ ...job, _receipt: { status: "executed", summary: id === "forge.gitea.review-pr" ? "已发起 PR 评审任务；任务结果尚未完成验证。" : "已发起 Issue 分析任务；任务结果尚未完成验证。", evidence: job.id ? [`job_id: ${String(job.id)}`] : [] } });
+    return runLarkHostCapability(request, reply, id, body => executeLarkAgentCapability(app, id, body));
   });
   app.get("/api/runtime-status", async (_request, reply) => {
     reply.header("Cache-Control", "no-store");

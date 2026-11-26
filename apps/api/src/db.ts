@@ -530,6 +530,14 @@ export function migrate(): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS lark_host_requests (
+      request_id TEXT PRIMARY KEY NOT NULL,
+      capability_id TEXT NOT NULL,
+      input_hash TEXT NOT NULL,
+      http_status INTEGER,
+      response_json TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS lark_group_context_cursors (
       chat_id TEXT NOT NULL,
       trust_scope TEXT NOT NULL CHECK (trust_scope IN ('trusted', 'untrusted')),

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import fs from "node:fs";
 import os from "node:os";
@@ -167,7 +168,7 @@ test("migration is idempotent", () => {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as Array<{ name: string }>;
   assert.deepEqual(
     tables.map((table) => table.name).filter((name) => !name.startsWith("sqlite_")),
-    ["app_settings", "codex_todos", "issues", "job_events", "lark_codex_sessions", "lark_contact_aliases", "lark_contacts", "lark_execution_approvals", "lark_group_context_cursors", "lark_messages", "lark_sticker_sends", "lark_stickers", "local_audit_events", "notifications", "pr_review_runs", "repair_jobs", "repo_setup_locks"]
+    ["app_settings", "codex_todos", "issues", "job_events", "lark_codex_sessions", "lark_contact_aliases", "lark_contacts", "lark_execution_approvals", "lark_group_context_cursors", "lark_host_requests", "lark_messages", "lark_sticker_sends", "lark_stickers", "local_audit_events", "notifications", "pr_review_runs", "repair_jobs", "repo_setup_locks"]
   );
   const sessionColumns = db.prepare("PRAGMA table_info(lark_codex_sessions)").all() as Array<{ name: string }>;
   assert.deepEqual(sessionColumns.map((column) => column.name), ["session_key", "chat_id", "trust_scope", "codex_session_id", "created_at", "updated_at"]);
@@ -275,7 +276,18 @@ test("Todo API supports manual Codex todos and status updates", async () => {
   }
 });
 
-test("Forge host capability endpoint delegates todo creation", async () => {
+async function waitForLarkHostReceipt(app: ReturnType<typeof Fastify>, authorization: string, requestId: string) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const response = await app.inject({ method: "GET", url: `/api/lark-agent/requests/${requestId}`, headers: { authorization } });
+    assert.equal(response.statusCode, 200);
+    const receipt = response.json();
+    if (receipt.state !== "running") return receipt;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.fail("receipt did not settle");
+}
+
+test("Forge host capability endpoint delegates both synchronous and detached todo creation", async () => {
   resetTables();
   const previousToken = config.larkAgentHostToken;
   config.larkAgentHostToken = "test-host-token";
@@ -300,6 +312,23 @@ test("Forge host capability endpoint delegates todo creation", async () => {
     assert.equal(response.statusCode, 201);
     assert.equal((response.json() as { title: string }).title, "来自 Lark Agent 的待办");
     assert.equal((response.json() as { _receipt: { status: string } })._receipt.status, "verified");
+
+    const requestId = randomUUID();
+    const authorization = "Bearer test-host-token";
+    const invoke = () => app.inject({
+      method: "POST", url: "/api/lark-agent/capabilities/forge.todo.create",
+      headers: { authorization, "x-lark-request-id": requestId }, payload: { input: { title: "Detached todo" } }
+    });
+    const accepted = await invoke();
+    assert.equal(accepted.statusCode, 202);
+    assert.deepEqual(accepted.json(), { state: "running" });
+    const receipt = await waitForLarkHostReceipt(app, authorization, requestId);
+    assert.equal(receipt.state, "finished");
+    assert.equal(receipt.httpStatus, 201);
+    assert.equal(receipt.body.title, "Detached todo");
+    assert.equal(receipt.body._receipt.status, "verified");
+    assert.deepEqual((await invoke()).json(), receipt);
+    assert.equal(count(), before + 2);
   } finally { config.larkAgentHostToken = previousToken; await app.close(); }
 });
 
@@ -310,7 +339,8 @@ test("deployment uses only an explicitly configured local adapter and never inve
   config.workspaceRoot = root; config.larkAgentHostToken = "fixture-host-token";
   const app = Fastify({ logger: false }); await app.register(issueRoutes);
   const headers = { authorization: "Bearer fixture-host-token" };
-  const invoke = (action: string) => app.inject({ method: "POST", url: `/api/lark-agent/capabilities/forge.deploy.${action}`, headers,
+  const invoke = (action: string, requestId?: string) => app.inject({ method: "POST", url: `/api/lark-agent/capabilities/forge.deploy.${action}`,
+    headers: { ...headers, ...(requestId ? { "x-lark-request-id": requestId } : {}) },
     payload: { input: { repo: "demo", apps: ["demo"], expectedRevision: "a".repeat(40), timeout: 30 } } });
   try {
     assert.equal((await invoke("inspect")).statusCode, 409);
@@ -327,6 +357,15 @@ test("deployment uses only an explicitly configured local adapter and never inve
     assert.equal(deployed.json()._receipt.status, "verified"); assert.equal(deployed.json().args.includes("--execute"), true);
     fs.writeFileSync(script, 'console.log("plain text is not verification");');
     assert.equal((await invoke("production")).statusCode, 409);
+
+    const requestId = randomUUID();
+    const marker = path.join(root, "adapter-invocations");
+    fs.writeFileSync(script, 'import { appendFileSync } from "node:fs"; appendFileSync("adapter-invocations", "x"); console.log("already applied a change"); console.error("verification failed"); process.exitCode = 1;');
+    assert.equal((await invoke("production", requestId)).statusCode, 202);
+    const receipt = await waitForLarkHostReceipt(app, headers.authorization, requestId);
+    assert.deepEqual(receipt, { state: "finished", httpStatus: 409, body: { error: "verification failed", stdout: "already applied a change" } });
+    assert.deepEqual((await invoke("production", requestId)).json(), receipt);
+    assert.equal(fs.readFileSync(marker, "utf8"), "x");
     updateAppSettings({ deploymentAdapterPath: "" }); assert.equal((await invoke("production")).statusCode, 409);
   } finally { Object.assign(config, previousConfig); await app.close(); fs.rmSync(root, { recursive: true, force: true }); }
 });

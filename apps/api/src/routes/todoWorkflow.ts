@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { notifyTodoOwner } from "../todoNotifications.js";
 import { requireLarkHostAuthorization } from "../larkHostAuthorization.js";
+import { runLarkHostCapability } from "../larkHostReceipts.js";
 import {
   createTodoWithWorkflow,
   todoPriorities,
@@ -27,20 +28,21 @@ const todoCapabilitySchema = z.object({
   }).optional()
 });
 
-export async function todoWorkflowRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/api/lark-agent/capabilities/forge.todo.create", { preHandler: requireLarkHostAuthorization }, async (request, reply) => {
-    const parsed = todoCapabilitySchema.safeParse(request.body ?? {});
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid todo input" });
-    const context: LarkTodoContext | undefined = parsed.data.context ? {
-      larkMessageId: parsed.data.context.larkMessageId,
-      chatId: parsed.data.context.chatId ?? null,
-      chatType: parsed.data.context.chatType ?? null,
-      senderId: parsed.data.context.senderId ?? null
-    } : undefined;
-    try {
-      const result = createTodoWithWorkflow(parsed.data.input, context);
-      const ownerNotified = context ? await notifyTodoOwner(result.todo.id) : false;
-      return reply.code(result.created ? 201 : 200).send({
+async function executeTodoCapability(body: unknown) {
+  const parsed = todoCapabilitySchema.safeParse(body);
+  if (!parsed.success) return { httpStatus: 400, body: { error: parsed.error.issues[0]?.message ?? "Invalid todo input" } };
+  const context: LarkTodoContext | undefined = parsed.data.context ? {
+    larkMessageId: parsed.data.context.larkMessageId,
+    chatId: parsed.data.context.chatId ?? null,
+    chatType: parsed.data.context.chatType ?? null,
+    senderId: parsed.data.context.senderId ?? null
+  } : undefined;
+  try {
+    const result = createTodoWithWorkflow(parsed.data.input, context);
+    const ownerNotified = context ? await notifyTodoOwner(result.todo.id) : false;
+    return {
+      httpStatus: result.created ? 201 : 200,
+      body: {
         ...result.todo,
         created: result.created,
         ownerNotified,
@@ -49,9 +51,15 @@ export async function todoWorkflowRoutes(app: FastifyInstance): Promise<void> {
           summary: result.created ? `已创建待办：${result.todo.title}` : `待办已存在：${result.todo.title}`,
           evidence: [`todo_id: ${result.todo.id}`]
         }
-      });
-    } catch (error) {
-      return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
+      }
+    };
+  } catch (error) {
+    return { httpStatus: 400, body: { error: error instanceof Error ? error.message : String(error) } };
+  }
+}
+
+export async function todoWorkflowRoutes(app: FastifyInstance): Promise<void> {
+  const id = "forge.todo.create";
+  app.post(`/api/lark-agent/capabilities/${id}`, { preHandler: requireLarkHostAuthorization }, async (request, reply) =>
+    runLarkHostCapability(request, reply, id, executeTodoCapability));
 }
