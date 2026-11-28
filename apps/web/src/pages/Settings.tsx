@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Download, FileText, FolderGit2, HardDrive, History, KeyRound, MessageSquareText, Power, RefreshCw, Save, Settings2, ShieldCheck, Stethoscope, Trash2, Upload, Zap } from "lucide-react";
 import { api, type LarkCodexModel, type LarkWritableRuntimeControl, type LaunchAgentStatus, type LocalAuditEvent, type LocalBackup, type LocalDataUsage, type LocalDiagnostic, type LocalRepository, type PromptKey, type PromptSettings, type RuntimeConfig, type Settings } from "../api";
 import { CompanyScopeSettings } from "../components/CompanyScopeSettings";
+import { ApprovalPromptSettings } from "../components/ApprovalPromptSettings";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { statusText } from "../i18n";
 import { usePersistentState } from "../usePersistentState";
@@ -947,6 +948,7 @@ export function SettingsPage() {
               <button type="button" aria-label="保存审批模型" title="保存审批模型" disabled={approvalModelDisabled || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(larkTurnAutoApprovalModel.trim()) || larkTurnAutoApprovalModel.trim() === settings.appSettings.larkTurnAutoApprovalModel} onClick={() => void updateSetting({ larkTurnAutoApprovalModel: larkTurnAutoApprovalModel.trim() })}><Save size={16} /></button>
             </div>}
           </div>
+          <ApprovalPromptSettings />
         </div>}
 
         {settingsSection === "maintenance" && <div className="panel">

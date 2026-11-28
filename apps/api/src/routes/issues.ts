@@ -930,6 +930,38 @@ export async function issueRoutes(app: FastifyInstance): Promise<void> {
     return { ...prompts, larkAssistant: { value: String(remoteLarkPrompt.larkAssistant ?? defaultValue), defaultValue, customized: remoteLarkPrompt.customized === true } };
   });
 
+  const approvalPromptPath = "/v1/approval-prompt";
+  const approvalPromptView = z.object({ value: z.string().min(1), defaultValue: z.string().min(1), customized: z.boolean() });
+  app.route({
+    method: ["GET", "PUT"],
+    url: "/api/settings/approval-prompt",
+    handler: async (request, reply) => {
+      reply.header("Cache-Control", "no-store");
+      if (!isLocalForgeRequest(request)) return reply.code(403).send({ error: "自动审批提示词仅限本机 Forge 配置。" });
+      if (!config.larkAgentUrl || !config.larkAgentToken) return reply.code(503).send({ error: "未配置 Lark Agent 连接或运行时凭据。" });
+      try {
+        const read = async () => approvalPromptView.parse(await larkAgentProxyFetch(approvalPromptPath, { signal: AbortSignal.timeout(3_000) }));
+        if (request.method === "GET") return await read();
+        const parsed = z.object({ value: z.string().max(50_000).nullable() }).strict().safeParse(request.body);
+        if (!parsed.success) return reply.code(400).send({ error: "自动审批提示词必须是最多 50000 字符的文本或 null。" });
+        const value = parsed.data.value?.trim() || null;
+        await larkAgentProxyFetch(approvalPromptPath, { method: "PUT", signal: AbortSignal.timeout(3_000),
+          headers: { "content-type": "application/json" }, body: JSON.stringify({ value }) });
+        const confirmed = await read();
+        if (confirmed.customized !== Boolean(value) || confirmed.value !== (value ?? confirmed.defaultValue)) {
+          return reply.code(502).send({ error: "自动审批提示词未能确认，请刷新后核对。" });
+        }
+        addLocalAuditEvent("prompts.updated", "更新自动审批提示词", { changedKeys: ["turnAutoApproval"] });
+        return confirmed;
+      } catch (error) {
+        if (error instanceof LarkAgentResponseError && error.statusCode === 404) {
+          return reply.code(409).send({ error: "当前 Lark Agent 版本不支持自动审批提示词配置。" });
+        }
+        return sendLarkAgentProxyError(reply, request, error);
+      }
+    }
+  });
+
   app.put("/api/settings/runtime-config", async (request, reply) => withLarkRuntimeSettingsLock(async () => {
     const parsed = runtimeConfigSchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid runtime config" });

@@ -3452,6 +3452,60 @@ test("Forge exposes only supported Agent runtime controls and uses the Agent as 
   } finally { config.larkAgentUrl = previousUrl; config.larkAgentToken = previousToken; globalThis.fetch = originalFetch; await app.close(); }
 });
 
+test("Forge approval prompt settings require a local origin and confirm saves against Lark Agent", async () => {
+  resetTables();
+  const { larkAgentUrl, larkAgentToken } = config;
+  const originalFetch = globalThis.fetch;
+  config.larkAgentUrl = "http://lark-agent.test";
+  config.larkAgentToken = "fixture-runtime-token";
+  const app = Fastify({ logger: false });
+  await app.register(issueRoutes);
+  const url = "/api/settings/approval-prompt";
+  const baseline = { value: "Default policy", defaultValue: "Default policy", customized: false };
+  const local = getAppSettings();
+  const calls: string[] = [];
+  let value: string | null = null;
+  let ignored = false;
+  let unavailable = false;
+  globalThis.fetch = async (target, init) => {
+    assert.equal(target, "http://lark-agent.test/v1/approval-prompt");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-runtime-token");
+    const method = init?.method ?? "GET";
+    calls.push(method);
+    if (unavailable) return new Response("Not found", { status: 404 });
+    if (method === "PUT" && !ignored) value = JSON.parse(String(init?.body)).value;
+    return Response.json({ ...baseline, value: value ?? baseline.value, customized: value !== null });
+  };
+  const put = (payload: object) => app.inject({ method: "PUT", url, payload });
+  try {
+    assert.equal((await app.inject({ url, headers: { origin: "https://foreign.example" } })).statusCode, 403);
+    assert.equal((await app.inject({ method: "PUT", url, remoteAddress: "192.0.2.1", payload: { value: "Policy" } })).statusCode, 403);
+    assert.equal((await put({ value: "Policy", outputSchema: {} })).statusCode, 400);
+    assert.deepEqual(calls, []);
+    assert.deepEqual((await app.inject(url)).json(), baseline);
+    const saved = await put({ value: "  New policy  " });
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.deepEqual(saved.json(), { ...baseline, value: "New policy", customized: true });
+    assert.deepEqual(calls, ["GET", "PUT", "GET"]);
+    ignored = true;
+    assert.equal((await put({ value: "Another policy" })).statusCode, 502);
+    ignored = false;
+    assert.deepEqual((await put({ value: null })).json(), baseline);
+    unavailable = true;
+    assert.equal((await app.inject(url)).statusCode, 409);
+    assert.equal((await put({ value: "Unsupported" })).statusCode, 409);
+    config.larkAgentToken = "";
+    assert.equal((await app.inject(url)).statusCode, 503);
+    assert.deepEqual(getAppSettings(), local);
+    assert.equal(db.prepare("SELECT count(*) n FROM local_audit_events WHERE action='prompts.updated'").pluck().get(), 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    config.larkAgentUrl = larkAgentUrl;
+    config.larkAgentToken = larkAgentToken;
+    await app.close();
+  }
+});
+
 test("trusted execution saves confirmed false, reads the Agent value and refuses unsupported or ignored writes", async () => {
   resetTables();
   const originalFetch = globalThis.fetch;

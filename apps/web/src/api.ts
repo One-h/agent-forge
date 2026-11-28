@@ -206,11 +206,12 @@ export type PromptKey = "larkAssistant" | "prReview" | "issueTriage" | "issueImp
 
 export type LarkCodexModel = { id: string; displayName: string; efforts: string[]; inputModalities: string[] };
 
-export type PromptSettings = Record<PromptKey, {
+export type PromptSetting = {
   value: string;
   defaultValue: string;
   customized: boolean;
-}>;
+};
+export type PromptSettings = Record<PromptKey, PromptSetting>;
 
 export type RuntimeConfig = {
   workspaceRoot: string;
@@ -766,6 +767,10 @@ export const api = {
   updatePrompts: (patch: Partial<Record<PromptKey, string | null>>) => request<PromptSettings>("/api/settings/prompts", {
     method: "PUT",
     body: JSON.stringify(patch)
+  }),
+  approvalPrompt: (signal: AbortSignal) => request<PromptSetting>("/api/settings/approval-prompt", { signal }),
+  updateApprovalPrompt: (value: string | null) => request<PromptSetting>("/api/settings/approval-prompt", {
+    method: "PUT", body: JSON.stringify({ value })
   }),
   updateRuntimeConfig: (runtimeConfig: RuntimeConfig) => request<RuntimeConfig>("/api/settings/runtime-config", {
     method: "PUT",
